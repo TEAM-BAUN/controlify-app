@@ -38,6 +38,7 @@ class Controlify(QMainWindow):
         self.id = id
         # * ------------
         # Log to Redis server that this client is activated
+        self.r.lpush("id_list", self.id)
         self.r.publish(
             "logs",
             pickle.dumps(
@@ -62,11 +63,14 @@ class Controlify(QMainWindow):
         self._createToBeConnectedSection()
         self._createConnectButton()
         self._createExitButton()
+        self._createStatusBar()
 
         self._centralWidget.setLayout(self.generalLayout)
 
         # ! To Activate Always Running Threads
-        self.logListenerThread = LogListenerThread(self.r, self.p)
+        self.logListenerThread = LogListenerThread(self.r, self.p, self.id)
+        self.logListenerThread.update_id_list_when_removed.connect(self.refreshIdList)
+        self.logListenerThread.update_id_list_when_added.connect(self.refreshIdList)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -83,8 +87,16 @@ class Controlify(QMainWindow):
         )
         if reply == QMessageBox.Yes:
             # Kapanirken IPyi siler
-            # self.r.lrem("ip_list", 1, my_local_ip)
-
+            self.r.lrem("id_list", 1, self.id)
+            self.r.publish(
+                "logs",
+                pickle.dumps(
+                    {
+                        "id": f"{self.id}",
+                        "log_type": "client_deactivated",
+                    }
+                ),
+            )
             event.accept()
         else:
             event.ignore()
@@ -104,10 +116,10 @@ class Controlify(QMainWindow):
         [Bağlı Bilgisayarların ip addresslerinin listesini gösteren widget]
         [Sürekli Güncel]
         """
-        self.connected_ips_listwidget = QListWidget()
-        self.connected_ips_listwidget.addItem("192.168.1.2")
-        self.connected_ips_listwidget.addItem("192.168.2.55")
-        self.generalLayout.addWidget(self.connected_ips_listwidget)
+        self.connected_ids_listwidget = QListWidget()
+        # self.connected_ids_listwidget.addItem("192.168.1.2")
+        # self.connected_ids_listwidget.addItem("192.168.2.55")
+        self.generalLayout.addWidget(self.connected_ids_listwidget)
 
     def _createPcControlScreen(self):
         self.pc_control_screen = PcControlScreen()
@@ -126,7 +138,7 @@ class Controlify(QMainWindow):
 
     def _createToBeConnectedSection(self):
         horizantalBoxLayout3 = QHBoxLayout()
-        to_be_connLabel = QLabel("Baglanilacak Bilgisayar")
+        to_be_connLabel = QLabel("Baglanilacak Bilgisayar IDsi :")
         self.to_be_connLineEdit = QLineEdit()
         horizantalBoxLayout3.addWidget(to_be_connLabel)
         horizantalBoxLayout3.addWidget(self.to_be_connLineEdit)
@@ -142,18 +154,41 @@ class Controlify(QMainWindow):
         self.exitBtn.clicked.connect(self.close)
         self.generalLayout.addWidget(self.exitBtn)
 
+    def _createStatusBar(self):
+        pass
+
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
     def connectToPc(self):
         # self.to_be_connLineEdit.setText("192.168.1.2")
-        self.r.publish(
-            "logs",
-            pickle.dumps(
-                {
-                    "id": f"{self.id}",
-                    "log_type": "client_activated",
-                }
-            ),
-        )
+        # self.r.publish(
+        #     "logs",
+        #     pickle.dumps(
+        #         {
+        #             "id": f"{self.id}",
+        #             "log_type": "client_activated",
+        #         }
+        #     ),
+        # )
+        pass
+
+    def refreshIdList(self, ids):
+        if len(ids) > 0:
+            decoded_ids = [x.decode("utf-8") for x in ids]
+            # Kendi idsini siliyoruz
+            # print(decoded_ids)
+            for id in decoded_ids:
+                if id == self.id:
+                    decoded_ids.remove(id)
+            # Kendinden haric biri varsa ;)
+            # print(decoded_ids)
+            # Listemizi guncel listeyle degistirmek icin siliyoruz
+            self.connected_ids_listwidget.clear()
+            # Yeni idleri listeye ekliyoruz
+            if len(decoded_ids) > 0:
+                for id in decoded_ids:
+                    self.connected_ids_listwidget.addItem(id)
+        elif len(ids) == 0:
+            self.connected_ids_listwidget.clear()
 
 
 # ? Bilgisayar Kontrol Ekrani
@@ -170,21 +205,35 @@ class FileTransferScreen(QWidget):
 
 # * ______________THREADLER______________
 class LogListenerThread(QThread):
-    new_client_goes_online = pyqtSignal(dict)
-    new_connection_request_taken = pyqtSignal(dict)
+    conn_req = pyqtSignal(str)
+    update_id_list_when_removed = pyqtSignal(list)
+    update_id_list_when_added = pyqtSignal(list)
 
-    def __init__(self, r, p):
+    def __init__(self, r, p, id):
         super().__init__()
         # Redis Instance
         self.r = r
         self.p = p
+        # Client ID gelen isteklerle karsilastirmak icin
+        self.id = id
 
     def run(self):
         while True:
+            updated_list = self.r.lrange("id_list", 0, -1)
             # time.sleep(0.01)
             log = self.p.get_message()
             if log:
-                print(log)
+                log_dict = pickle.loads(log["data"])
+                if log_dict["log_type"] == "client_activated":
+                    # Aktif olan id yi status barda gostermek =>  Sonradan eklenilecek ozellik
+                    # ip listesini guncelle
+                    self.update_id_list_when_added.emit(updated_list)
+                if log_dict["log_type"] == "client_deactivated":
+                    # ip listesini guncelle
+                    self.update_id_list_when_removed.emit(updated_list)
+                # if log_dict["log_type"] == "connection_request":
+                #     # ip listesini guncelle
+                #     pass
 
 
 # * ______________Redis Baglantisi______________
@@ -216,17 +265,12 @@ def redisServerSetup():
 def main():
     redisServerStatus, r, p = redisServerSetup()
     if redisServerStatus:
-        try:
-            controlify = QApplication(sys.argv)
-            view = Controlify(r, p)
-            # ! Uygulama penceresini göstermek
-            view.show()
-            # ! Uygulamanin ana döngüsünü oluşturmak
-            sys.exit(controlify.exec_())
-        except:
-            print("PyQt uygulamasi kapatildi!")
-            print("Yada")
-            print("PyQt uygulamasinin baslatilmasinda sorun yasandi!")
+        controlify = QApplication(sys.argv)
+        view = Controlify(r, p)
+        # ! Uygulama penceresini göstermek
+        view.show()
+        # ! Uygulamanin ana döngüsünü oluşturmak
+        sys.exit(controlify.exec_())
     else:
         print("Redis Baglanti Sorunu Yasiyor...")
 
