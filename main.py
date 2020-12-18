@@ -77,9 +77,10 @@ class Controlify(QMainWindow):
         self.logListenerThread.selected_client_became_offline.connect(
             self.clearLineEditWhenServerOffline
         )
-        self.logListenerThread.connection_request_rejected.connect(
-            self.loading_screen.stopAnimation
+        self.logListenerThread.connection_request_handler.connect(
+            self.handlePermissionResult
         )
+        self.logListenerThread.show_msg_box.connect(self.showReplyBox)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -181,11 +182,42 @@ class Controlify(QMainWindow):
 
         else:
             self.statusBar().showMessage("Bir ID secmelisiniz!")
-            timer = QTimer()
-            timer.singleShot(3000, self.statusBar().showMessage(""))
             # HATA MESAJI 3 sn sonra siliniyor
             # print("Bir ID secmelisiniz!")
-        pass
+
+    def showReplyBox(self, id_who_wants_to_conn):
+        reply = QMessageBox.question(
+            self,
+            "Onay",
+            f"{id_who_wants_to_conn} size baglanmak istiyor onayliyormusunuz?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.r.publish(
+                "logs",
+                pickle.dumps(
+                    {
+                        "log_type": "connection_request_answer",
+                        "from": f"{self.id}",
+                        "to": f"{id_who_wants_to_conn}",
+                        "result": True,
+                    }
+                ),
+            )
+            # 2.adim olarak Frame gondermeye basla
+        else:
+            self.r.publish(
+                "logs",
+                pickle.dumps(
+                    {
+                        "log_type": "connection_request_answer",
+                        "from": f"{self.id}",
+                        "to": f"{id_who_wants_to_conn}",
+                        "result": False,
+                    }
+                ),
+            )
 
     def refreshIdList(self, ids):
         if len(ids) > 0:
@@ -214,6 +246,19 @@ class Controlify(QMainWindow):
         if id == self.to_be_connLineEdit.text():
             self.to_be_connLineEdit.setText("")
 
+    def handlePermissionResult(self, reply):
+        if reply:
+            # FRAME EKRANINI GOSTER
+            pass
+        else:
+            self.loading_screen.stopAnimation()
+            self.statusBar().showMessage(
+                f"{self.to_be_connLineEdit.text()} isteginizi reddetti"
+            )
+
+    def showPcControlScreen(self):
+        pass
+
 
 # ? Looading Ekrani
 class LoadingScreen(QWidget):
@@ -231,7 +276,9 @@ class LoadingScreen(QWidget):
         hlbox1.addWidget(self.connecting_to_label)
         self.label_animation = QLabel(self)
         self.label_animation.setMovie(self.movie)
+        hlbox2.addStretch()
         hlbox2.addWidget(self.label_animation)
+        hlbox2.addStretch()
         generalLayout.addLayout(hlbox1)
         generalLayout.addLayout(hlbox2)
         self.setLayout(generalLayout)
@@ -264,7 +311,8 @@ class LogListenerThread(QThread):
     update_id_list_when_removed = pyqtSignal(list)
     update_id_list_when_added = pyqtSignal(list)
     selected_client_became_offline = pyqtSignal(str)
-    connection_request_rejected = pyqtSignal()
+    connection_request_handler = pyqtSignal(bool)
+    show_msg_box = pyqtSignal(str)
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -287,14 +335,23 @@ class LogListenerThread(QThread):
                     # Aktif olan id yi status barda gostermek =>  Sonradan eklenilecek ozellik
                     # ip listesini guncelle
                     self.update_id_list_when_added.emit(updated_list)
+                # -----------------------------------------------------------------
                 if log_dict["log_type"] == "client_deactivated":
                     # ip listesini guncelle
                     self.update_id_list_when_removed.emit(updated_list)
                     # print(log_dict["data"]["id"])
                     self.selected_client_became_offline.emit(log_dict["id"])
-                # if log_dict["log_type"] == "connection_request":
-                #     # ip listesini guncelle
-                #     pass
+                # -----------------------------------------------------------------
+                if log_dict["log_type"] == "connection_request":
+                    # ip listesini guncelle
+                    # Onay Message box i ac eger to kendisine esitse
+                    if log_dict["to"] == self.id:
+                        self.show_msg_box.emit(log_dict["from"])
+                # -----------------------------------------------------------------
+                if log_dict["log_type"] == "connection_request_answer":
+                    if log_dict["to"] == self.id:
+                        # animasyonu durdurmak ve gelen cevaba gore fonksiyon tetiklemek
+                        self.connection_request_handler.emit(log_dict["result"])
 
 
 # * ______________Redis Baglantisi______________
