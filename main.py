@@ -24,6 +24,8 @@ __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 # * ____________________________________________
 # ? ANA EKRAN
 class Controlify(QMainWindow):
+    status = pyqtSignal(bool)
+
     def __init__(self, r, p):
         super().__init__()
         # ? Redis Instance
@@ -81,6 +83,7 @@ class Controlify(QMainWindow):
             self.handlePermissionResult
         )
         self.logListenerThread.show_msg_box.connect(self.showReplyBox)
+        self.status.connect(self.logListenerThread.setStatus)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -168,6 +171,7 @@ class Controlify(QMainWindow):
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
     def connectToPc(self):
         if not self.to_be_connLineEdit.text() == "":
+            self.status.emit(True)
             self.r.publish(
                 "logs",
                 pickle.dumps(
@@ -184,8 +188,12 @@ class Controlify(QMainWindow):
             self.statusBar().showMessage("Bir ID secmelisiniz!")
             # HATA MESAJI 3 sn sonra siliniyor
             # print("Bir ID secmelisiniz!")
+            self.status.emit(False)
 
     def showReplyBox(self, id_who_wants_to_conn):
+        # todo CLIENT'i mesgule al
+        self.status.emit(True)
+
         reply = QMessageBox.question(
             self,
             "Onay",
@@ -205,7 +213,7 @@ class Controlify(QMainWindow):
                     }
                 ),
             )
-            # 2.adim olarak Frame gondermeye basla
+            # todo  Frame gondermeye basla
         else:
             self.r.publish(
                 "logs",
@@ -218,6 +226,9 @@ class Controlify(QMainWindow):
                     }
                 ),
             )
+            time.sleep(0.001)
+            self.status.emit(False)
+            # todo client'i mesgulden cikart
 
     def refreshIdList(self, ids):
         if len(ids) > 0:
@@ -246,18 +257,23 @@ class Controlify(QMainWindow):
         if id == self.to_be_connLineEdit.text():
             self.to_be_connLineEdit.setText("")
 
-    def handlePermissionResult(self, reply):
+    def handlePermissionResult(self, reply, busy):
         if reply:
+            self.status.emit(True)
             # FRAME EKRANINI GOSTER
             pass
+        elif not reply and busy == "busy":
+            self.loading_screen.stopAnimation()
+            self.statusBar().showMessage(
+                f"{self.to_be_connLineEdit.text()} IDli Client mesgul!"
+            )
+            self.status.emit(False)
         else:
             self.loading_screen.stopAnimation()
             self.statusBar().showMessage(
                 f"{self.to_be_connLineEdit.text()} isteginizi reddetti"
             )
-
-    def showPcControlScreen(self):
-        pass
+            self.status.emit(False)
 
 
 # ? Looading Ekrani
@@ -311,7 +327,7 @@ class LogListenerThread(QThread):
     update_id_list_when_removed = pyqtSignal(list)
     update_id_list_when_added = pyqtSignal(list)
     selected_client_became_offline = pyqtSignal(str)
-    connection_request_handler = pyqtSignal(bool)
+    connection_request_handler = pyqtSignal(bool, str)
     show_msg_box = pyqtSignal(str)
 
     def __init__(self, r, p, id):
@@ -321,6 +337,10 @@ class LogListenerThread(QThread):
         self.p = p
         # Client ID gelen isteklerle karsilastirmak icin
         self.id = id
+        # Connected Client ID
+        self.connected_to = None
+        # To Control Busy Clients
+        self.status = False
 
     def run(self):
         # Thread surekli guncel listeyi tutuyor elinde fakat
@@ -331,6 +351,11 @@ class LogListenerThread(QThread):
             log = self.p.get_message()
             if log:
                 log_dict = pickle.loads(log["data"])
+                if log_dict["log_type"] == "busy":
+                    if log_dict["to"] == self.id:
+                        self.connection_request_handler.emit(
+                            False, log_dict["log_type"]
+                        )
                 if log_dict["log_type"] == "client_activated":
                     # Aktif olan id yi status barda gostermek =>  Sonradan eklenilecek ozellik
                     # ip listesini guncelle
@@ -343,15 +368,32 @@ class LogListenerThread(QThread):
                     self.selected_client_became_offline.emit(log_dict["id"])
                 # -----------------------------------------------------------------
                 if log_dict["log_type"] == "connection_request":
-                    # ip listesini guncelle
                     # Onay Message box i ac eger to kendisine esitse
                     if log_dict["to"] == self.id:
-                        self.show_msg_box.emit(log_dict["from"])
+                        if self.status == False:
+                            # Mesgul degilse
+                            self.show_msg_box.emit(log_dict["from"])
+                        else:
+                            # Eger mesgulse
+                            self.r.publish(
+                                "logs",
+                                pickle.dumps(
+                                    {
+                                        "log_type": "busy",
+                                        "from": f"{self.id}",
+                                        "to": f"{log_dict['from']}",
+                                    }
+                                ),
+                            )
+
                 # -----------------------------------------------------------------
                 if log_dict["log_type"] == "connection_request_answer":
                     if log_dict["to"] == self.id:
                         # animasyonu durdurmak ve gelen cevaba gore fonksiyon tetiklemek
-                        self.connection_request_handler.emit(log_dict["result"])
+                        self.connection_request_handler.emit(log_dict["result"], "")
+
+    def setStatus(self, status):
+        self.status = status
 
 
 # * ______________Redis Baglantisi______________
@@ -400,8 +442,6 @@ if __name__ == "__main__":
 # TODOs
 # * 1) Listwidget'da bir elemena tiklandiginda baglanilacak olan ID QLineEdit'e yazilacaktir ✅
 # * 1_a) Eger QlineEdit'e yazilmis IP Baglan Butonuna tiklanmadan once Serverdan ayrilirsa Qline Edit sifirlanacaktir ✅
-# * 2) Hata veya bilgilendirme mesajlari icin statusbar yerlestirilmesi
-# * 3) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"}
-# * 3_a) Her Client kendi IDsini konrol ediyor olucak
-
-# https://upload.wikimedia.org/wikipedia/commons/c/c7/Loading_2.gif
+# * 2) Hata veya bilgilendirme mesajlari icin statusbar yerlestirilmesi ✅
+# * 3) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"} ✅
+# * 3_a) Her Client kendi IDsini konrol ediyor olucak ✅
