@@ -6,12 +6,13 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
+# REDIS SERVER
 import redis
-from redis.exceptions import *
 
+# UNIQUE ID OLUSTURMAK ICIN
 from datetime import datetime
 
-
+# REDIS SERVERINA BINARY DATA GONDEMEK ICIN
 import pickle
 
 __version__ = "0.1"
@@ -56,6 +57,9 @@ class Controlify(QMainWindow):
         self._centralWidget = QWidget(self)
         self.setCentralWidget(self._centralWidget)
 
+        # Baglanti istegi gonderildiginde Ekrana Animasyon cikarilmasi
+        # !Eger Redderse animasyon kapanicak ve status barda istek gonderilen kisinin ID si ile birlikte sizi <ID> reddetti mesaji gosterilecektir
+        self.loading_screen = LoadingScreen()
         # Ana Ekranin Icindeki Widgetlarin Olusturulmasi
         self._createHeader()
         self._createIpList()
@@ -63,7 +67,6 @@ class Controlify(QMainWindow):
         self._createToBeConnectedSection()
         self._createConnectButton()
         self._createExitButton()
-        self._createStatusBar()
 
         self._centralWidget.setLayout(self.generalLayout)
 
@@ -73,6 +76,9 @@ class Controlify(QMainWindow):
         self.logListenerThread.update_id_list_when_added.connect(self.refreshIdList)
         self.logListenerThread.selected_client_became_offline.connect(
             self.clearLineEditWhenServerOffline
+        )
+        self.logListenerThread.connection_request_rejected.connect(
+            self.loading_screen.stopAnimation
         )
         self.logListenerThread.start()
         # self.logListenerThread.exit()
@@ -158,21 +164,27 @@ class Controlify(QMainWindow):
         self.exitBtn.clicked.connect(self.close)
         self.generalLayout.addWidget(self.exitBtn)
 
-    def _createStatusBar(self):
-        pass
-
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
     def connectToPc(self):
-        # self.to_be_connLineEdit.setText("192.168.1.2")
-        # self.r.publish(
-        #     "logs",
-        #     pickle.dumps(
-        #         {
-        #             "id": f"{self.id}",
-        #             "log_type": "client_activated",
-        #         }
-        #     ),
-        # )
+        if not self.to_be_connLineEdit.text() == "":
+            self.r.publish(
+                "logs",
+                pickle.dumps(
+                    {
+                        "log_type": "connection_request",
+                        "from": f"{self.id}",
+                        "to": f"{self.to_be_connLineEdit.text()}",
+                    }
+                ),
+            )
+            self.loading_screen.startAnimation(ID=self.to_be_connLineEdit.text())
+
+        else:
+            self.statusBar().showMessage("Bir ID secmelisiniz!")
+            timer = QTimer()
+            timer.singleShot(3000, self.statusBar().showMessage(""))
+            # HATA MESAJI 3 sn sonra siliniyor
+            # print("Bir ID secmelisiniz!")
         pass
 
     def refreshIdList(self, ids):
@@ -203,6 +215,37 @@ class Controlify(QMainWindow):
             self.to_be_connLineEdit.setText("")
 
 
+# ? Looading Ekrani
+class LoadingScreen(QWidget):
+    def __init__(self):
+        super().__init__()
+        # self.setFixedSize(QSize(200, 200))
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint)
+        self.movie = QMovie("spinner.gif")
+
+        generalLayout = QVBoxLayout()
+
+        hlbox1 = QHBoxLayout()
+        hlbox2 = QHBoxLayout()
+        self.connecting_to_label = QLabel(self)
+        hlbox1.addWidget(self.connecting_to_label)
+        self.label_animation = QLabel(self)
+        self.label_animation.setMovie(self.movie)
+        hlbox2.addWidget(self.label_animation)
+        generalLayout.addLayout(hlbox1)
+        generalLayout.addLayout(hlbox2)
+        self.setLayout(generalLayout)
+
+    def startAnimation(self, ID):
+        self.connecting_to_label.setText(f"{ID} numaralı ID'den cevap bekleniyor")
+        self.show()
+        self.movie.start()
+
+    def stopAnimation(self):
+        self.movie.stop()
+        self.close()
+
+
 # ? Bilgisayar Kontrol Ekrani
 class PcControlScreen(QWidget):
     def __init__():
@@ -221,6 +264,7 @@ class LogListenerThread(QThread):
     update_id_list_when_removed = pyqtSignal(list)
     update_id_list_when_added = pyqtSignal(list)
     selected_client_became_offline = pyqtSignal(str)
+    connection_request_rejected = pyqtSignal()
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -299,5 +343,8 @@ if __name__ == "__main__":
 # TODOs
 # * 1) Listwidget'da bir elemena tiklandiginda baglanilacak olan ID QLineEdit'e yazilacaktir ✅
 # * 1_a) Eger QlineEdit'e yazilmis IP Baglan Butonuna tiklanmadan once Serverdan ayrilirsa Qline Edit sifirlanacaktir ✅
-# * 2) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"}
-# * 2_a) Her Client kendi IDsini konrol ediyor olucak
+# * 2) Hata veya bilgilendirme mesajlari icin statusbar yerlestirilmesi
+# * 3) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"}
+# * 3_a) Her Client kendi IDsini konrol ediyor olucak
+
+# https://upload.wikimedia.org/wikipedia/commons/c/c7/Loading_2.gif
