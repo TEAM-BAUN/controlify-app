@@ -71,6 +71,9 @@ class Controlify(QMainWindow):
         self.logListenerThread = LogListenerThread(self.r, self.p, self.id)
         self.logListenerThread.update_id_list_when_removed.connect(self.refreshIdList)
         self.logListenerThread.update_id_list_when_added.connect(self.refreshIdList)
+        self.logListenerThread.selected_client_became_offline.connect(
+            self.clearLineEditWhenServerOffline
+        )
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -117,6 +120,7 @@ class Controlify(QMainWindow):
         [Sürekli Güncel]
         """
         self.connected_ids_listwidget = QListWidget()
+        self.connected_ids_listwidget.itemDoubleClicked.connect(self.setTheID)
         # self.connected_ids_listwidget.addItem("192.168.1.2")
         # self.connected_ids_listwidget.addItem("192.168.2.55")
         self.generalLayout.addWidget(self.connected_ids_listwidget)
@@ -176,10 +180,10 @@ class Controlify(QMainWindow):
             decoded_ids = [x.decode("utf-8") for x in ids]
             # Kendi idsini siliyoruz
             # print(decoded_ids)
+            # Client'in kendi ipsini siliyoruz ;)
             for id in decoded_ids:
                 if id == self.id:
                     decoded_ids.remove(id)
-            # Kendinden haric biri varsa ;)
             # print(decoded_ids)
             # Listemizi guncel listeyle degistirmek icin siliyoruz
             self.connected_ids_listwidget.clear()
@@ -189,6 +193,14 @@ class Controlify(QMainWindow):
                     self.connected_ids_listwidget.addItem(id)
         elif len(ids) == 0:
             self.connected_ids_listwidget.clear()
+
+    def setTheID(self, item):
+        self.to_be_connLineEdit.setText(item.text())
+        # print(f"SECILEN ID : {item.text()}")
+
+    def clearLineEditWhenServerOffline(self, id):
+        if id == self.to_be_connLineEdit.text():
+            self.to_be_connLineEdit.setText("")
 
 
 # ? Bilgisayar Kontrol Ekrani
@@ -208,6 +220,7 @@ class LogListenerThread(QThread):
     conn_req = pyqtSignal(str)
     update_id_list_when_removed = pyqtSignal(list)
     update_id_list_when_added = pyqtSignal(list)
+    selected_client_became_offline = pyqtSignal(str)
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -218,6 +231,8 @@ class LogListenerThread(QThread):
         self.id = id
 
     def run(self):
+        # Thread surekli guncel listeyi tutuyor elinde fakat
+        # sadece biri server'a katildiginda veya ayrildiginda listwidget guncellenecektir
         while True:
             updated_list = self.r.lrange("id_list", 0, -1)
             # time.sleep(0.01)
@@ -231,6 +246,8 @@ class LogListenerThread(QThread):
                 if log_dict["log_type"] == "client_deactivated":
                     # ip listesini guncelle
                     self.update_id_list_when_removed.emit(updated_list)
+                    # print(log_dict["data"]["id"])
+                    self.selected_client_became_offline.emit(log_dict["id"])
                 # if log_dict["log_type"] == "connection_request":
                 #     # ip listesini guncelle
                 #     pass
@@ -240,7 +257,7 @@ class LogListenerThread(QThread):
 def redisServerSetup():
     """
     [
-    ! Canli veri alisverisini saglayabilen
+    ! Canli veri alisverisini saglayabilen (pubsub)
     ! ayni zamanda NoSQL gibi calisan, key:value seklinde ram hafizasinda veri saklayabilen bir database
     ]
     """
@@ -277,3 +294,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# TODOs
+# * 1) Listwidget'da bir elemena tiklandiginda baglanilacak olan ID QLineEdit'e yazilacaktir ✅
+# * 1_a) Eger QlineEdit'e yazilmis IP Baglan Butonuna tiklanmadan once Serverdan ayrilirsa Qline Edit sifirlanacaktir ✅
+# * 2) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"}
+# * 2_a) Her Client kendi IDsini konrol ediyor olucak
