@@ -6,6 +6,8 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
+from PyQt5 import QtCore
+
 # REDIS SERVER
 import redis
 
@@ -15,9 +17,17 @@ from datetime import datetime
 # REDIS SERVERINA BINARY DATA GONDEMEK ICIN
 import pickle
 
+# Goruntu Isleme Toolari
+import cv2
+import imutils
+import mss
+import numpy
+import zlib
+
 __version__ = "0.1"
 __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 
+encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
 
 # * ____________________________________________
 # * ______________<&>|EKRANLAR|<&>______________
@@ -62,6 +72,9 @@ class Controlify(QMainWindow):
         # Baglanti istegi gonderildiginde Ekrana Animasyon cikarilmasi
         # !Eger Redderse animasyon kapanicak ve status barda istek gonderilen kisinin ID si ile birlikte sizi <ID> reddetti mesaji gosterilecektir
         self.loading_screen = LoadingScreen()
+        # PcControl Screen
+        self.pc_control_screen = None
+
         # Ana Ekranin Icindeki Widgetlarin Olusturulmasi
         self._createHeader()
         self._createIpList()
@@ -91,6 +104,7 @@ class Controlify(QMainWindow):
     # todo Ana Ekrana Ait Event(Olay Kontrol Methodlari Pencere Kapatilmasi,Mouse Hareketleri vs.)
     # ? Sol ustden uygulamayi kapatirken kontrol edilen method
     def closeEvent(self, event):
+        self.status.emit(True)
         reply = QMessageBox.question(
             self,
             "Message",
@@ -135,8 +149,8 @@ class Controlify(QMainWindow):
         # self.connected_ids_listwidget.addItem("192.168.2.55")
         self.generalLayout.addWidget(self.connected_ids_listwidget)
 
-    def _createPcControlScreen(self):
-        self.pc_control_screen = PcControlScreen()
+    # def _createPcControlScreen(self):
+    #     self.pc_control_screen = PcControlScreen()
 
     def _createConnTypeRadioBtns(self):
         horizantalBoxLayout2 = QHBoxLayout()
@@ -182,6 +196,13 @@ class Controlify(QMainWindow):
                     }
                 ),
             )
+            center_position = (
+                self.frameGeometry().center()
+                - QtCore.QRect(QtCore.QPoint(), self.loading_screen.sizeHint()).center()
+            )
+            self.loading_screen.move(center_position)
+            self.hide()
+
             self.loading_screen.startAnimation(ID=self.to_be_connLineEdit.text())
 
         else:
@@ -212,6 +233,13 @@ class Controlify(QMainWindow):
                         "result": True,
                     }
                 ),
+            )
+            time.sleep(0.001)
+            self.hide()
+
+            # Control Eden Bilgisayarin IDsi ile birlikle kucuk bir bilgilendirme penceresi acilir
+            self.notify_screen = NotifyScreen(
+                self.r, self.p, self.id, id_who_wants_to_conn
             )
             # todo  Frame gondermeye basla
         else:
@@ -261,8 +289,15 @@ class Controlify(QMainWindow):
         if reply:
             self.status.emit(True)
             # FRAME EKRANINI GOSTER
+            self.hide()
+            # PcKontrol Ekranini AC Frameleri al
+            self.loading_screen.stopAnimation()
+            self.pc_control_screen = PcControlEkrani(
+                self.r, self.p, self.id, self.to_be_connLineEdit.text()
+            )
             pass
         elif not reply and busy == "busy":
+            self.show()
             self.loading_screen.stopAnimation()
             self.statusBar().showMessage(
                 f"{self.to_be_connLineEdit.text()} IDli Client mesgul!"
@@ -270,6 +305,7 @@ class Controlify(QMainWindow):
             self.status.emit(False)
         else:
             self.loading_screen.stopAnimation()
+            self.show()
             self.statusBar().showMessage(
                 f"{self.to_be_connLineEdit.text()} isteginizi reddetti"
             )
@@ -310,9 +346,34 @@ class LoadingScreen(QWidget):
 
 
 # ? Bilgisayar Kontrol Ekrani
-class PcControlScreen(QWidget):
-    def __init__():
+class PcControlEkrani(QWidget):
+    def __init__(self, r, p, id, i_am_controlling):
         super().__init__()
+        self.r = r
+        self.p = p
+        self.id = id
+        self.i_am_controlling = i_am_controlling
+        self.setObjectName("PC Control")
+        self.setMaximumSize(1280, 720)
+        self.image_frame_label = QLabel()
+        # # * Close Connection Button
+        # self.close_btn = QPushButton("Bağlantıyı Sonlandır")
+        # self.close_btn.clicked.connect(self.exit)
+        # # * ----------------------------------- *
+        self.grid = QGridLayout()
+        self.grid.addWidget(self.image_frame_label)
+        # self.grid.addWidget(self.close_btn)
+        self.setLayout(self.grid)
+        self.receiver_thread = FrameReceiverThread(
+            self.r, self.p, self.id, self.i_am_controlling
+        )
+        self.receiver_thread.changePixmap.connect(self.setImage)
+        self.receiver_thread.start()
+        self.show()
+
+    @pyqtSlot(QImage)
+    def setImage(self, image):
+        self.image_frame_label.setPixmap(QPixmap.fromImage(image))
 
 
 # ? Dosya Paylasimi Ekrani
@@ -321,7 +382,91 @@ class FileTransferScreen(QWidget):
         super().__init__()
 
 
+# ? Kim Tarafindan Yonetildigini belirmek amacli Ekran
+class NotifyScreen(QWidget):
+    def __init__(self, r, p, id, who_is_controlling,):
+        super().__init__()
+        self.r = r
+        self.p = p
+        self.id = id
+        self.whoIs = who_is_controlling
+        # self.setFixedSize(50, 50)
+        general_layout = QVBoxLayout()
+        h1box = QHBoxLayout()
+        h1box.addWidget(QLabel(f" {who_is_controlling}  bilgisayarinizi yonetiyor..."))
+        h2box = QHBoxLayout()
+        exitBtn = QPushButton("Kapat", self)
+        # exitBtn.clicked.connect(self.exit)
+        exitBtn.setIcon(QIcon("cancel.png"))
+
+        h2box.addStretch()
+        h2box.addWidget(exitBtn)
+        h2box.addStretch()
+        general_layout.addLayout(h1box)
+        general_layout.addLayout(h2box)
+        self.setLayout(general_layout)
+        self.sender_thread = FrameSenderThread(self.r, self.p, self.id, self.whoIs)
+        self.sender_thread.start()
+        self.show()
+
+
 # * ______________THREADLER______________
+class FrameSenderThread(QtCore.QThread):
+    close_notify_screen = pyqtSignal()
+
+    def __init__(self, r, p, id, who_is):
+        super(FrameSenderThread, self).__init__()
+        self.flag = False
+        # REDIS INSTANCE
+        self.r = r
+        self.p = p
+
+        # My ID
+        self.id = id
+        # Whose ID
+        self.who_is = who_is
+
+    def run(self):
+        global encode_param
+        with mss.mss() as sct:
+            while True:
+                img = numpy.array(sct.grab(sct.monitors[1]))
+                result, frame = cv2.imencode(".jpg", img, encode_param)
+                binary_frame = pickle.dumps(frame)
+                zipped_binary_frame = zlib.compress(binary_frame)
+                self.r.set("frame", zipped_binary_frame)
+
+
+class FrameReceiverThread(QtCore.QThread):
+    changePixmap = pyqtSignal(QImage)
+    close_pc_control_screen = pyqtSignal()
+
+    def __init__(self, r, p, id, who_is):
+        super().__init__()
+        self.r = r
+        self.p = p
+        self.id = id
+        self.who_is = who_is
+
+    def run(self):
+        while True:
+            zipped_binary_frame = self.r.get("frame")
+            if zipped_binary_frame:
+                uncompressed_binary_frame = zlib.decompress(zipped_binary_frame)
+                binary_frame = pickle.loads(
+                    uncompressed_binary_frame, fix_imports=True, encoding="bytes"
+                )
+                frame = cv2.imdecode(binary_frame, cv2.IMREAD_COLOR)
+                frame = imutils.resize(frame, width=1280, height=720)
+                cvt2qt = QImage(
+                    frame.data,
+                    frame.shape[1],
+                    frame.shape[0],
+                    QImage.Format_RGB888,
+                )
+                self.changePixmap.emit(cvt2qt)
+
+
 class LogListenerThread(QThread):
     conn_req = pyqtSignal(str)
     update_id_list_when_removed = pyqtSignal(list)
@@ -329,6 +474,9 @@ class LogListenerThread(QThread):
     selected_client_became_offline = pyqtSignal(str)
     connection_request_handler = pyqtSignal(bool, str)
     show_msg_box = pyqtSignal(str)
+    close_notify_screen = pyqtSignal()
+    close_pc_control_screen = pyqtSignal()
+    activate_main_screen = pyqtSignal(str)
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -346,8 +494,8 @@ class LogListenerThread(QThread):
         # Thread surekli guncel listeyi tutuyor elinde fakat
         # sadece biri server'a katildiginda veya ayrildiginda listwidget guncellenecektir
         while True:
+            time.sleep(0.001)
             updated_list = self.r.lrange("id_list", 0, -1)
-            # time.sleep(0.01)
             log = self.p.get_message()
             if log:
                 log_dict = pickle.loads(log["data"])
@@ -385,7 +533,6 @@ class LogListenerThread(QThread):
                                     }
                                 ),
                             )
-
                 # -----------------------------------------------------------------
                 if log_dict["log_type"] == "connection_request_answer":
                     if log_dict["to"] == self.id:
@@ -405,15 +552,16 @@ def redisServerSetup():
     ]
     """
     try:
-        # r = redis.Redis("localhost")
-        r = redis.Redis(
-            host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
-            password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
-            port=11907,
-            db=0,
-        )
+        r = redis.Redis("localhost")
+        # r = redis.Redis(
+        #     host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+        #     password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
+        #     port=11907,
+        #     db=0,
+        # )
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe("logs")
+
         # ? Requsts yani (logs)kayitlar kanalina abone olduk burda tum cihazlarin yapmak istedikleri islemlerin trafigini logluyacagiz
         # ? Buna gore clientlari uyaracagiz hali hazirda baglanti durumunda olan clientlara baglanti istegi gonderilmesini engelliyecegiz
         return (True, r, p)
@@ -440,8 +588,4 @@ if __name__ == "__main__":
 
 
 # TODOs
-# * 1) Listwidget'da bir elemena tiklandiginda baglanilacak olan ID QLineEdit'e yazilacaktir ✅
-# * 1_a) Eger QlineEdit'e yazilmis IP Baglan Butonuna tiklanmadan once Serverdan ayrilirsa Qline Edit sifirlanacaktir ✅
-# * 2) Hata veya bilgilendirme mesajlari icin statusbar yerlestirilmesi ✅
-# * 3) Baglan butonuna basildiginda {log_type="connection_request",from:f"{self.id}",to:"self.list_widget.selected_item_id"} ✅
-# * 3_a) Her Client kendi IDsini konrol ediyor olucak ✅
+# 1) PcControl Ekrani
