@@ -211,6 +211,11 @@ class Controlify(QMainWindow):
             # print("Bir ID secmelisiniz!")
             self.status.emit(False)
 
+    def returnMainScreen(self):
+
+        self.notify_screen = None
+        self.show()
+
     def showReplyBox(self, id_who_wants_to_conn):
         # todo CLIENT'i mesgule al
         self.status.emit(True)
@@ -241,6 +246,7 @@ class Controlify(QMainWindow):
             self.notify_screen = NotifyScreen(
                 self.r, self.p, self.id, id_who_wants_to_conn
             )
+            self.notify_screen.close_screen.connect(self.returnMainScreen)
             # todo  Frame gondermeye basla
         else:
             self.r.publish(
@@ -354,8 +360,14 @@ class PcControlEkrani(QWidget):
         self.id = id
         self.i_am_controlling = i_am_controlling
         self.setObjectName("PC Control")
-        self.setMaximumSize(1280, 720)
+        # self.setMaximumSize(1280, 720)
         self.image_frame_label = QLabel()
+        self.image_frame_label.setMaximumSize(1280,720)
+        self.image_frame_label.setMouseTracking(True)
+        
+        tracker = MouseTracker(self.image_frame_label)
+        tracker.positionChanged.connect(self.on_positionChanged)
+
         # # * Close Connection Button
         # self.close_btn = QPushButton("Bağlantıyı Sonlandır")
         # self.close_btn.clicked.connect(self.exit)
@@ -370,10 +382,33 @@ class PcControlEkrani(QWidget):
         self.receiver_thread.changePixmap.connect(self.setImage)
         self.receiver_thread.start()
         self.show()
+    
+    @QtCore.pyqtSlot(QtCore.QPoint)
+    def on_positionChanged(self, pos):
+        print((pos.x(), pos.y()))
 
     @pyqtSlot(QImage)
     def setImage(self, image):
         self.image_frame_label.setPixmap(QPixmap.fromImage(image))
+
+class MouseTracker(QtCore.QObject):
+    positionChanged = QtCore.pyqtSignal(QtCore.QPoint)
+
+    def __init__(self, widget):
+        super().__init__(widget)
+        self._widget = widget
+        self.widget.setMouseTracking(True)
+        self.widget.installEventFilter(self)
+
+    @property
+    def widget(self):
+        return self._widget
+
+    def eventFilter(self, o, e):
+        if o is self.widget and e.type() == QtCore.QEvent.MouseMove:
+            self.positionChanged.emit(e.pos())
+        return super().eventFilter(o, e)
+
 
 
 # ? Dosya Paylasimi Ekrani
@@ -384,7 +419,15 @@ class FileTransferScreen(QWidget):
 
 # ? Kim Tarafindan Yonetildigini belirmek amacli Ekran
 class NotifyScreen(QWidget):
-    def __init__(self, r, p, id, who_is_controlling,):
+    close_screen = pyqtSignal()
+
+    def __init__(
+        self,
+        r,
+        p,
+        id,
+        who_is_controlling,
+    ):
         super().__init__()
         self.r = r
         self.p = p
@@ -396,7 +439,7 @@ class NotifyScreen(QWidget):
         h1box.addWidget(QLabel(f" {who_is_controlling}  bilgisayarinizi yonetiyor..."))
         h2box = QHBoxLayout()
         exitBtn = QPushButton("Kapat", self)
-        # exitBtn.clicked.connect(self.exit)
+        exitBtn.clicked.connect(self.exit)
         exitBtn.setIcon(QIcon("cancel.png"))
 
         h2box.addStretch()
@@ -409,13 +452,17 @@ class NotifyScreen(QWidget):
         self.sender_thread.start()
         self.show()
 
+    def exit(self):
+        self.sender_thread.flag = False
+        self.close_screen.emit()
+
 
 # * ______________THREADLER______________
 class FrameSenderThread(QtCore.QThread):
     close_notify_screen = pyqtSignal()
 
     def __init__(self, r, p, id, who_is):
-        super(FrameSenderThread, self).__init__()
+        super().__init__()
         self.flag = False
         # REDIS INSTANCE
         self.r = r
@@ -427,9 +474,10 @@ class FrameSenderThread(QtCore.QThread):
         self.who_is = who_is
 
     def run(self):
+        self.flag = True
         global encode_param
         with mss.mss() as sct:
-            while True:
+            while self.flag:
                 img = numpy.array(sct.grab(sct.monitors[1]))
                 result, frame = cv2.imencode(".jpg", img, encode_param)
                 binary_frame = pickle.dumps(frame)
