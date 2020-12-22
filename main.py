@@ -24,6 +24,7 @@ import mss
 import numpy
 import zlib
 
+
 __version__ = "0.1"
 __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 
@@ -36,14 +37,18 @@ encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
 class Controlify(QMainWindow):
     status = pyqtSignal(bool)
 
-    def __init__(self, r, p):
+    def __init__(self, r, p, width, height):
         super().__init__()
         # ? Redis Instance
         # * ------------
         self.r = r
         self.p = p
         # * ------------
-
+        # ? Desktop Screen Size
+        # * ------------
+        self.desktop_screenX = width
+        self.desktop_screenY = height
+        # * ------------
         # ? Unique ID creation for every client
         # * ------------
         now = datetime.now()
@@ -362,9 +367,9 @@ class PcControlEkrani(QWidget):
         self.setObjectName("PC Control")
         # self.setMaximumSize(1280, 720)
         self.image_frame_label = QLabel()
-        self.image_frame_label.setMaximumSize(1280,720)
+        self.image_frame_label.setMaximumSize(1280, 720)
         self.image_frame_label.setMouseTracking(True)
-        
+
         tracker = MouseTracker(self.image_frame_label)
         tracker.positionChanged.connect(self.on_positionChanged)
 
@@ -382,14 +387,26 @@ class PcControlEkrani(QWidget):
         self.receiver_thread.changePixmap.connect(self.setImage)
         self.receiver_thread.start()
         self.show()
-    
+
     @QtCore.pyqtSlot(QtCore.QPoint)
     def on_positionChanged(self, pos):
         print((pos.x(), pos.y()))
+        self.r.publish(
+            "logs",
+            pickle.dumps(
+                {
+                    "to":f"{self.i_am_controlling}",
+                    "from": f"{self.id}",
+                    "log_type": "mouse_position",
+                    "mouse_position":f"{pos.x()}:{pos.y()}"
+                }
+            ),
+        )
 
     @pyqtSlot(QImage)
     def setImage(self, image):
         self.image_frame_label.setPixmap(QPixmap.fromImage(image))
+
 
 class MouseTracker(QtCore.QObject):
     positionChanged = QtCore.pyqtSignal(QtCore.QPoint)
@@ -408,7 +425,6 @@ class MouseTracker(QtCore.QObject):
         if o is self.widget and e.type() == QtCore.QEvent.MouseMove:
             self.positionChanged.emit(e.pos())
         return super().eventFilter(o, e)
-
 
 
 # ? Dosya Paylasimi Ekrani
@@ -622,7 +638,9 @@ def main():
     redisServerStatus, r, p = redisServerSetup()
     if redisServerStatus:
         controlify = QApplication(sys.argv)
-        view = Controlify(r, p)
+        screen_resolution = controlify.desktop().screenGeometry()
+        width, height = screen_resolution.width(), screen_resolution.height()
+        view = Controlify(r, p, width, height)
         # ! Uygulama penceresini göstermek
         view.show()
         # ! Uygulamanin ana döngüsünü oluşturmak
