@@ -104,6 +104,7 @@ class Controlify(QMainWindow):
         self.logListenerThread.show_msg_box.connect(self.showReplyBox)
         self.status.connect(self.logListenerThread.setStatus)
         self.logListenerThread.change_mouse_position.connect(self.set_mouse_position)
+        self.logListenerThread.mouse_click.connect(self.mouse_click)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -190,6 +191,9 @@ class Controlify(QMainWindow):
         self.generalLayout.addWidget(self.exitBtn)
 
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
+    def mouse_click(self):
+        pyautogui.leftClick()
+
     def set_mouse_position(self, mouse_position_touple):
         rate = self.desktop_screenX / 1280
         x, y = mouse_position_touple
@@ -364,6 +368,14 @@ class LoadingScreen(QWidget):
 
 
 # ? Bilgisayar Kontrol Ekrani
+class myLabel(QLabel):
+    clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, QMouseEvent):
+        if QMouseEvent.button() == Qt.LeftButton:
+            self.clicked.emit()
+
+
 class PcControlEkrani(QWidget):
     def __init__(self, r, p, id, i_am_controlling):
         super().__init__()
@@ -373,9 +385,11 @@ class PcControlEkrani(QWidget):
         self.i_am_controlling = i_am_controlling
         self.setObjectName("PC Control")
         # self.setMaximumSize(1280, 720)
-        self.image_frame_label = QLabel()
+        self.image_frame_label = myLabel()
+
         self.image_frame_label.setMaximumSize(1280, 720)
         self.image_frame_label.setMouseTracking(True)
+        self.image_frame_label.clicked.connect(self.mouse_clicked)
 
         tracker = MouseTracker(self.image_frame_label)
         tracker.positionChanged.connect(self.on_positionChanged)
@@ -394,6 +408,19 @@ class PcControlEkrani(QWidget):
         self.receiver_thread.changePixmap.connect(self.setImage)
         self.receiver_thread.start()
         self.show()
+
+    def mouse_clicked(self):
+        self.r.publish(
+            "logs",
+            pickle.dumps(
+                {
+                    "to": f"{self.i_am_controlling}",
+                    "from": f"{self.id}",
+                    "log_type": "mouse_left_click",
+                }
+            ),
+        )
+        print("SOL TIK ALINDI!")
 
     @QtCore.pyqtSlot(QtCore.QPoint)
     def on_positionChanged(self, pos):
@@ -549,6 +576,7 @@ class LogListenerThread(QThread):
     close_pc_control_screen = pyqtSignal()
     activate_main_screen = pyqtSignal(str)
     change_mouse_position = pyqtSignal(tuple)
+    mouse_click = pyqtSignal()
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -616,6 +644,9 @@ class LogListenerThread(QThread):
                         mouse_position = log_dict["mouse_position"]
                         x_y = mouse_position.split(":")
                         self.change_mouse_position.emit((x_y[0], x_y[1]))
+                if log_dict["log_type"] == "mouse_left_click":
+                    if log_dict["to"] == self.id:
+                        self.mouse_click.emit()
 
     def setStatus(self, status):
         self.status = status
@@ -630,13 +661,13 @@ def redisServerSetup():
     ]
     """
     try:
-        # r = redis.Redis("localhost")
-        r = redis.Redis(
-            host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
-            password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
-            port=11907,
-            db=0,
-        )
+        r = redis.Redis("localhost")
+        # r = redis.Redis(
+        #     host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+        #     password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
+        #     port=11907,
+        #     db=0,
+        # )
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe("logs")
 
