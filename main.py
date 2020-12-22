@@ -23,6 +23,7 @@ import imutils
 import mss
 import numpy
 import zlib
+import pyautogui
 
 
 __version__ = "0.1"
@@ -102,6 +103,7 @@ class Controlify(QMainWindow):
         )
         self.logListenerThread.show_msg_box.connect(self.showReplyBox)
         self.status.connect(self.logListenerThread.setStatus)
+        self.logListenerThread.change_mouse_position.connect(self.set_mouse_position)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -188,6 +190,11 @@ class Controlify(QMainWindow):
         self.generalLayout.addWidget(self.exitBtn)
 
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
+    def set_mouse_position(self, mouse_position_touple):
+        rate = self.desktop_screenX / 1280
+        x, y = mouse_position_touple
+        pyautogui.moveTo(x * rate, y * rate)
+
     def connectToPc(self):
         if not self.to_be_connLineEdit.text() == "":
             self.status.emit(True)
@@ -395,10 +402,10 @@ class PcControlEkrani(QWidget):
             "logs",
             pickle.dumps(
                 {
-                    "to":f"{self.i_am_controlling}",
+                    "to": f"{self.i_am_controlling}",
                     "from": f"{self.id}",
                     "log_type": "mouse_position",
-                    "mouse_position":f"{pos.x()}:{pos.y()}"
+                    "mouse_position": f"{pos.x()}:{pos.y()}",
                 }
             ),
         )
@@ -541,6 +548,7 @@ class LogListenerThread(QThread):
     close_notify_screen = pyqtSignal()
     close_pc_control_screen = pyqtSignal()
     activate_main_screen = pyqtSignal(str)
+    change_mouse_position = pyqtSignal(tuple)
 
     def __init__(self, r, p, id):
         super().__init__()
@@ -602,6 +610,12 @@ class LogListenerThread(QThread):
                     if log_dict["to"] == self.id:
                         # animasyonu durdurmak ve gelen cevaba gore fonksiyon tetiklemek
                         self.connection_request_handler.emit(log_dict["result"], "")
+
+                if log_dict["log_type"] == "mouse_position":
+                    if log_dict["to"] == self.id:
+                        mouse_position = log_dict["mouse_position"]
+                        x_y = mouse_position.split(":")
+                        self.change_mouse_position.emit((x_y[0], x_y[1]))
 
     def setStatus(self, status):
         self.status = status
