@@ -193,7 +193,7 @@ class Controlify(QMainWindow):
     def set_mouse_position(self, mouse_position_touple):
         rate = self.desktop_screenX / 1280
         x, y = mouse_position_touple
-        pyautogui.moveTo(x * rate, y * rate)
+        pyautogui.moveTo(float(x) * rate, float(y) * rate)
 
     def connectToPc(self):
         if not self.to_be_connLineEdit.text() == "":
@@ -630,13 +630,13 @@ def redisServerSetup():
     ]
     """
     try:
-        r = redis.Redis("localhost")
-        # r = redis.Redis(
-        #     host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
-        #     password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
-        #     port=11907,
-        #     db=0,
-        # )
+        # r = redis.Redis("localhost")
+        r = redis.Redis(
+            host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+            password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
+            port=11907,
+            db=0,
+        )
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe("logs")
 
