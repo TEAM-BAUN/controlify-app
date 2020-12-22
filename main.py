@@ -25,7 +25,6 @@ import numpy
 import zlib
 import pyautogui
 
-
 __version__ = "0.1"
 __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 
@@ -92,7 +91,7 @@ class Controlify(QMainWindow):
         self._centralWidget.setLayout(self.generalLayout)
 
         # ! To Activate Always Running Threads
-        self.logListenerThread = LogListenerThread(self.r, self.p, self.id)
+        self.logListenerThread = LogListenerThread(self.r, self.p, self.id,self.desktop_screenX)
         self.logListenerThread.update_id_list_when_removed.connect(self.refreshIdList)
         self.logListenerThread.update_id_list_when_added.connect(self.refreshIdList)
         self.logListenerThread.selected_client_became_offline.connect(
@@ -103,7 +102,6 @@ class Controlify(QMainWindow):
         )
         self.logListenerThread.show_msg_box.connect(self.showReplyBox)
         self.status.connect(self.logListenerThread.setStatus)
-        self.logListenerThread.change_mouse_position.connect(self.set_mouse_position)
         self.logListenerThread.mouse_click.connect(self.mouse_click)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
@@ -195,9 +193,12 @@ class Controlify(QMainWindow):
         pyautogui.leftClick()
 
     def set_mouse_position(self, mouse_position_touple):
+        time.sleep(0.5)
         rate = self.desktop_screenX / 1280
         x, y = mouse_position_touple
-        pyautogui.moveTo(float(x) * rate, float(y) * rate)
+        x_rate = float(x) * rate
+        y_rate = float(y) * rate
+        pyautogui.moveTo(x_rate, y_rate, duration=0.0, tween="linear", _pause=False)
 
     def connectToPc(self):
         if not self.to_be_connLineEdit.text() == "":
@@ -578,7 +579,7 @@ class LogListenerThread(QThread):
     change_mouse_position = pyqtSignal(tuple)
     mouse_click = pyqtSignal()
 
-    def __init__(self, r, p, id):
+    def __init__(self, r, p, id,X):
         super().__init__()
         # Redis Instance
         self.r = r
@@ -589,6 +590,8 @@ class LogListenerThread(QThread):
         self.connected_to = None
         # To Control Busy Clients
         self.status = False
+        # Screen
+        self.screen_size_X = X
 
     def run(self):
         # Thread surekli guncel listeyi tutuyor elinde fakat
@@ -643,7 +646,12 @@ class LogListenerThread(QThread):
                     if log_dict["to"] == self.id:
                         mouse_position = log_dict["mouse_position"]
                         x_y = mouse_position.split(":")
-                        self.change_mouse_position.emit((x_y[0], x_y[1]))
+                        rate = self.screen_size_X / 1280
+                        x, y = (x_y[0],x_y[1])
+                        x_rate = float(x) * rate
+                        y_rate = float(y) * rate
+                        pyautogui.moveTo(x_rate, y_rate, duration=0.0, tween="linear", _pause=False)
+                        # self.change_mouse_position.emit((x_y[0], x_y[1]))
                 if log_dict["log_type"] == "mouse_left_click":
                     if log_dict["to"] == self.id:
                         self.mouse_click.emit()
