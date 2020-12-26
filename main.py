@@ -561,7 +561,7 @@ class FrameReceiverThread(QtCore.QThread):
                     frame.data,
                     frame.shape[1],
                     frame.shape[0],
-                    QImage.Format_RGB888,
+                    QImage.Format_BGR888,
                 )
                 self.changePixmap.emit(cvt2qt)
 
@@ -704,7 +704,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# TODOs
-# 1) PcControl Ekrani
