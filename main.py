@@ -91,7 +91,9 @@ class Controlify(QMainWindow):
         self._centralWidget.setLayout(self.generalLayout)
 
         # ! To Activate Always Running Threads
-        self.logListenerThread = LogListenerThread(self.r, self.p, self.id,self.desktop_screenX)
+        self.logListenerThread = LogListenerThread(
+            self.r, self.p, self.id, self.desktop_screenX
+        )
         self.logListenerThread.update_id_list_when_removed.connect(self.refreshIdList)
         self.logListenerThread.update_id_list_when_added.connect(self.refreshIdList)
         self.logListenerThread.selected_client_became_offline.connect(
@@ -103,6 +105,7 @@ class Controlify(QMainWindow):
         self.logListenerThread.show_msg_box.connect(self.showReplyBox)
         self.status.connect(self.logListenerThread.setStatus)
         self.logListenerThread.mouse_click.connect(self.mouse_click)
+        self.logListenerThread.mouse_right_click.connect(self.mouse_right_click)
         self.logListenerThread.start()
         # self.logListenerThread.exit()
         # self.logListenerThread.quit()
@@ -191,6 +194,9 @@ class Controlify(QMainWindow):
     # todo Aksiyon alinan methodlar(Pc ye baglanma istegi gonderme,Guncel Ipleri alma vs.)
     def mouse_click(self):
         pyautogui.leftClick()
+    
+    def mouse_right_click(self):
+        pyautogui.rightClick()
 
     def set_mouse_position(self, mouse_position_touple):
         time.sleep(0.5)
@@ -371,10 +377,13 @@ class LoadingScreen(QWidget):
 # ? Bilgisayar Kontrol Ekrani
 class myLabel(QLabel):
     clicked = pyqtSignal()
+    right_clicked = pyqtSignal()
 
     def mouseReleaseEvent(self, QMouseEvent):
         if QMouseEvent.button() == Qt.LeftButton:
             self.clicked.emit()
+        if QMouseEvent.button() == Qt.RightButton:
+            self.right_clicked.emit()
 
 
 class PcControlEkrani(QWidget):
@@ -391,6 +400,7 @@ class PcControlEkrani(QWidget):
         self.image_frame_label.setMaximumSize(1280, 720)
         self.image_frame_label.setMouseTracking(True)
         self.image_frame_label.clicked.connect(self.mouse_clicked)
+        self.image_frame_label.right_clicked.connect(self.mouse_right_clicked)
 
         tracker = MouseTracker(self.image_frame_label)
         tracker.positionChanged.connect(self.on_positionChanged)
@@ -422,6 +432,19 @@ class PcControlEkrani(QWidget):
             ),
         )
         print("SOL TIK ALINDI!")
+
+    def mouse_right_clicked(self):
+        self.r.publish(
+            "logs",
+            pickle.dumps(
+                {
+                    "to": f"{self.i_am_controlling}",
+                    "from": f"{self.id}",
+                    "log_type": "mouse_right_click",
+                }
+            ),
+        )
+        print("SAG TIK ALINDI!")
 
     @QtCore.pyqtSlot(QtCore.QPoint)
     def on_positionChanged(self, pos):
@@ -578,8 +601,9 @@ class LogListenerThread(QThread):
     activate_main_screen = pyqtSignal(str)
     change_mouse_position = pyqtSignal(tuple)
     mouse_click = pyqtSignal()
+    mouse_right_click = pyqtSignal()
 
-    def __init__(self, r, p, id,X):
+    def __init__(self, r, p, id, X):
         super().__init__()
         # Redis Instance
         self.r = r
@@ -647,14 +671,19 @@ class LogListenerThread(QThread):
                         mouse_position = log_dict["mouse_position"]
                         x_y = mouse_position.split(":")
                         rate = self.screen_size_X / 1280
-                        x, y = (x_y[0],x_y[1])
+                        x, y = (x_y[0], x_y[1])
                         x_rate = float(x) * rate
                         y_rate = float(y) * rate
-                        pyautogui.moveTo(x_rate, y_rate, duration=0.0, tween="linear", _pause=False)
+                        pyautogui.moveTo(
+                            x_rate, y_rate, duration=0.0, tween="linear", _pause=False
+                        )
                         # self.change_mouse_position.emit((x_y[0], x_y[1]))
                 if log_dict["log_type"] == "mouse_left_click":
                     if log_dict["to"] == self.id:
                         self.mouse_click.emit()
+                if log_dict["log_type"] == "mouse_right_click":
+                    if log_dict["to"] == self.id:
+                        self.mouse_right_click.emit()
 
     def setStatus(self, status):
         self.status = status
@@ -669,13 +698,13 @@ def redisServerSetup():
     ]
     """
     try:
-        r = redis.Redis("localhost")
-        # r = redis.Redis(
-        #     host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
-        #     password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
-        #     port=11907,
-        #     db=0,
-        # )
+        # r = redis.Redis("localhost")
+        r = redis.Redis(
+            host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+            password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
+            port=11907,
+            db=0,
+        )
         p = r.pubsub(ignore_subscribe_messages=True)
         p.subscribe("logs")
 
