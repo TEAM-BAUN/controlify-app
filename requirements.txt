@@ -1,4 +1,0 @@
-imutils==0.5.3
-mss==6.1.0
-opencv-python-headless==4.4.0.46
-PyQt5==5.15.2
