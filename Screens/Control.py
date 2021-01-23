@@ -2,9 +2,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from Runnables.SendMouseLeftClick import SendMouseLeftClickRunnable
-from Runnables.SendMouseRightClick import SendMouseRightClickRunnable
-from Runnables.SendPointerPosition import SendPointerPositionRunnable
+from Threads.SendMouseLeftClick import SendMouseLeftClick
+from Threads.SendMouseRightClick import SendMouseRightClick
+from Threads.SendPointerPosition import SendPointerPosition
 
 from Utils.redisconn import redisServerSetup
 
@@ -61,27 +61,23 @@ class PcControlScreen(QWidget):
 
     def mouse_clicked(self):
         logging.info("SOL TIK ALINDI!")
-        pool = QThreadPool.globalInstance()
-        runnable = SendMouseLeftClickRunnable(self.id, self.i_am_controlling)
-        # 3. Call start()
-        pool.start(runnable)
+        self.send_mouse_left_click = SendMouseLeftClick(self.id, self.i_am_controlling)
+        self.send_mouse_left_click.start()
 
     def mouse_right_clicked(self):
         logging.info("SAG TIK ALINDI!")
-        pool = QThreadPool.globalInstance()
-        runnable = SendMouseRightClickRunnable(self.id, self.i_am_controlling)
-        # 3. Call start()
-        pool.start(runnable)
+        self.send_mouse_right_click = SendMouseRightClick(
+            self.id, self.i_am_controlling
+        )
+        self.send_mouse_right_click.start()
 
     @pyqtSlot(QPoint)
     def on_positionChanged(self, pos):
         logging.info(f"Mouse konumu => X:{pos.x()} Y:{pos.y()}")
-        pool = QThreadPool.globalInstance()
-        runnable = SendPointerPositionRunnable(
+        self.send_pointer_pos_thread = SendPointerPosition(
             self.id, self.i_am_controlling, pos.x(), pos.y()
         )
-        # 3. Call start()
-        pool.start(runnable)
+        self.send_pointer_pos_thread.start()
 
     @pyqtSlot(QImage)
     def setImage(self, image):

@@ -1,7 +1,7 @@
-from Runnables.MouseRightClick import MouseRightClickRunnable
-from Runnables.MouseLeftClick import MouseLeftClickRunnable
+from Threads.MouseRightClick import MouseRightClick
+from Threads.MouseLeftClick import MouseLeftClick
+from Threads.MoveMouseCursor import MoveMouseCursorThread
 from Workers.FrameSender import FrameSenderWorker
-from Runnables.MoveMouseCursor import MoveMouseCursorRunnable
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -52,25 +52,17 @@ class NotifyScreen(QWidget):
         rate = self.screen_sizeX / 1280
         x_rate = float(x) * rate
         y_rate = float(y) * rate
-        pool = QThreadPool.globalInstance()
         # 2. Instantiate the subclass of QRunnable
-        runnable = MoveMouseCursorRunnable(x_rate, y_rate)
-        # 3. Call start()
-        pool.start(runnable)
+        self.move_mouse_thread = MoveMouseCursorThread(x_rate, y_rate)
+        self.move_mouse_thread.start()
 
     def mouseLeftClick(self):
-        pool = QThreadPool.globalInstance()
-        # 2. Instantiate the subclass of QRunnable
-        runnable = MouseLeftClickRunnable()
-        # 3. Call start()
-        pool.start(runnable)
+        self.mouse_left_thread = MouseLeftClick()
+        self.mouse_left_thread.start()
 
     def mouseRightClick(self):
-        pool = QThreadPool.globalInstance()
-        # 2. Instantiate the subclass of QRunnable
-        runnable = MouseRightClickRunnable()
-        # 3. Call start()
-        pool.start(runnable)
+        self.mouse_right_thread = MouseRightClick()
+        self.mouse_right_thread.start()
 
     def closeNotify(self):
         self.frame_sender_worker.flag = False
