@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QRunnable, Qt, QThreadPool
+from PyQt5.QtCore import QObject,pyqtSignal
 
 import logging
 import pickle
@@ -11,7 +11,9 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 # 1. Subclass QRunnable
-class SendMouseLeftClickRunnable(QRunnable):
+class SendMouseLeftClick(QObject):
+    finished = pyqtSignal()
+
     def __init__(self, id, theIdIamControlling):
         super().__init__()
         self.id = id
@@ -30,3 +32,4 @@ class SendMouseLeftClickRunnable(QRunnable):
                 }
             ),
         )
+        self.finished.emit()

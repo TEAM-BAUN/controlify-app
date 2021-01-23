@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QRunnable, QThread, Qt, QThreadPool
+from PyQt5.QtCore import QObject, pyqtSignal
 
 import logging
 import pickle
@@ -11,25 +11,24 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 # 1. Subclass QRunnable
-class SendPointerPosition(QThread):
-    def __init__(self, id, theIdIamControlling, x, y):
+class SendMouseRightClick(QObject):
+    finished = pyqtSignal()
+    def __init__(self, id, theIdIamControlling):
         super().__init__()
         self.id = id
         self.theIdIamControlling = theIdIamControlling
-        self.x = x
-        self.y = y
 
     def run(self):
         # Your long-running task goes here ...
-        logging.info(f"Mouse Position is sending! (X:{self.x},Y:{self.y})")
+        logging.info("Mouse Right Click Send!")
         r.publish(
             "logs",
             pickle.dumps(
                 {
                     "to": f"{self.theIdIamControlling}",
                     "from": f"{self.id}",
-                    "log_type": "mouse_position",
-                    "mouse_position": f"{self.x}:{self.y}",
+                    "log_type": "mouse_right_click",
                 }
             ),
         )
+        self.finished.emit()
