@@ -202,7 +202,7 @@ class Main(QMainWindow):
             self.log_listener_thread.deleteLater()
             self.file_transfer_screen = FileTransferScreen(self.id, connected_id)
             self.file_transfer_screen.show()
-            self.close()
+            self.hide()
             
 
     def closeControlScreen(self, who_closed):

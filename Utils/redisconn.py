@@ -10,10 +10,16 @@ def redisServerSetup():
     """
     try:
         # r = redis.Redis("localhost")
+        # r = redis.Redis(
+        #     host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+        #     password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
+        #     port=11907,
+        #     db=0,
+        # )
         r = redis.Redis(
-            host="redis-11907.c135.eu-central-1-1.ec2.cloud.redislabs.com",
-            password="jPHWcbukgy7r1qmBwa9VxNRHZmfeD9N9",
-            port=11907,
+            host="redis-19465.c135.eu-central-1-1.ec2.cloud.redislabs.com",
+            password="RQ1k6C31YkC4S2I1BhMRIq4pBB0udLjB",
+            port=19465,
             db=0,
         )
         p = r.pubsub(ignore_subscribe_messages=True)
