@@ -11,6 +11,7 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 if __name__ == "__main__":
     status, r, p = redisServerSetup()
+
     if status:
         app = QApplication(sys.argv)
         # Ekran Cozunurluk degerlerini almak!

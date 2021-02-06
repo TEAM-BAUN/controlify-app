@@ -1,8 +1,8 @@
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QRunnable, QCoreApplication
 
 import logging
 import pickle
-
+import time
 from Utils.redisconn import redisServerSetup
 
 status, r, p = redisServerSetup()
@@ -11,24 +11,25 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 # 1. Subclass QRunnable
-class SendMouseRightClick(QObject):
-    finished = pyqtSignal()
+class SendMouseLeftClickRunnable(QRunnable):
     def __init__(self, id, theIdIamControlling):
         super().__init__()
         self.id = id
         self.theIdIamControlling = theIdIamControlling
+        self.setAutoDelete(True)
 
     def run(self):
         # Your long-running task goes here ...
-        logging.info("Mouse Right Click Send!")
+        logging.info("Mouse left Click Send!")
+        time.sleep(0.5)
         r.publish(
             "logs",
             pickle.dumps(
                 {
                     "to": f"{self.theIdIamControlling}",
                     "from": f"{self.id}",
-                    "log_type": "mouse_right_click",
+                    "log_type": "mouse_left_click",
                 }
             ),
         )
-        self.finished.emit()
+        self.autoDelete()

@@ -2,12 +2,17 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 import pickle
 import logging
+import re
 
 from Utils.redisconn import redisServerSetup
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 status, r, p = redisServerSetup()
+
+
+pattern = "^\?to=(\d+)&from=(\d+)&posX=(\d+)&posY=(\d+)"
+
 
 # Step 1: Create a worker class
 class LogListenerWorker(QObject):
@@ -18,7 +23,7 @@ class LogListenerWorker(QObject):
 
     reuqest_canceled = pyqtSignal()
     request_rejected = pyqtSignal()
-    request_accepted = pyqtSignal(str,str)
+    request_accepted = pyqtSignal(str, str)
 
     mouse_right_click = pyqtSignal()
     mouse_left_click = pyqtSignal()
@@ -67,24 +72,25 @@ class LogListenerWorker(QObject):
                 if log_dict["log_type"] == "connection_request_answer":
                     if log_dict["to"] == self.id:
                         if log_dict["result"] == True:
-                            self.request_accepted.emit(log_dict["connection_type"],log_dict["from"])
+                            self.request_accepted.emit(
+                                log_dict["connection_type"], log_dict["from"]
+                            )
                         else:
                             self.request_rejected.emit()
 
                 if log_dict["log_type"] == "connection_request_canceled":
                     if log_dict["to"] == self.id:
                         self.reuqest_canceled.emit()
-                
+
                 if log_dict["log_type"] == "control_screen_closed":
                     if log_dict["to"] == self.id:
                         self.close_notify_screen.emit()
-                
 
-                if log_dict["log_type"] == "mouse_position":
-                    if log_dict["to"] == self.id:
-                        mouse_position = log_dict["mouse_position"]
-                        x_y = mouse_position.split(":")
-                        self.mouse_pointer_pos.emit(x_y[0], x_y[1])
+                # if log_dict["log_type"] == "mouse_position":
+                #     if log_dict["to"] == self.id:
+                #         mouse_position = log_dict["mouse_position"]
+                #         x_y = mouse_position.split(":")
+                #         self.mouse_pointer_pos.emit(x_y[0], x_y[1])
                 if log_dict["log_type"] == "mouse_left_click":
                     if log_dict["to"] == self.id:
                         self.mouse_left_click.emit()

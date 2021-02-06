@@ -1,18 +1,17 @@
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QRunnable, QCoreApplication
 import logging
 import pyautogui
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 # 1. Subclass QRunnable
-class MouseLeftClick(QObject):
-    finished = pyqtSignal()
-
+class MouseLeftClickRunnable(QRunnable):
     def __init__(self):
         super().__init__()
+        self.setAutoDelete(True)
 
     def run(self):
         # Your long-running task goes here ...
         logging.info("Left Click received!")
         pyautogui.leftClick()
-        self.finished.emit()
+        self.autoDelete()

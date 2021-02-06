@@ -279,9 +279,9 @@ class Main(QMainWindow):
                     self.logListenerWorker.mouse_right_click.connect(
                         self.notify_screen.mouseRightClick
                     )
-                    self.logListenerWorker.mouse_pointer_pos.connect(
-                        self.notify_screen.moveMousePointer
-                    )
+                    # self.logListenerWorker.mouse_pointer_pos.connect(
+                    #     self.notify_screen.moveMousePointer
+                    # )
                     self.hide()
                     self.notify_screen.show()
                 else:

@@ -1,13 +1,11 @@
+from Runnables.MouseRightClick import MouseRightClickRunnable
+from Runnables.MouseLeftClick import MouseLeftClickRunnable
 from Workers.FrameSender import FrameSenderWorker
-
-from Workers.MouseLeftClick import MouseLeftClick
-from Workers.MouseRightClick import MouseRightClick
-from Workers.MoveMouseCursor import MoveMouseCursor
-
+from Runnables.MoveMouseCursor import MoveMouseCursorRunnable
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-
+from Workers.MousePosListener import MousePosListenerWorker
 
 import os
 
@@ -22,6 +20,7 @@ class NotifyScreen(QWidget):
         self.screen_sizeX = screen_sizeX
         self.setupUi()
         self.startSendingFrames()
+        self.startListeningMousePositions()
 
     def startSendingFrames(self):
         # Step 2: Create a QThread object
@@ -34,6 +33,19 @@ class NotifyScreen(QWidget):
         self.thread_frame_sender.started.connect(self.frame_sender_worker.run)
         # Step 6: Start the thread
         self.thread_frame_sender.start()
+
+    def startListeningMousePositions(self):
+        # Step 2: Create a QThread object
+        self.thread_mouse_pos_listener = QThread()
+        # Step 3: Create a worker object
+        self.mouse_pos_worker = MousePosListenerWorker(self.id, self.whoIs)
+        self.mouse_pos_worker.mouse_pointer_pos.connect(self.moveMousePointer)
+        # Step 4: Move worker to the thread
+        self.mouse_pos_worker.moveToThread(self.thread_mouse_pos_listener)
+        # Step 5: Connect signals and slots
+        self.thread_mouse_pos_listener.started.connect(self.mouse_pos_worker.run)
+        # Step 6: Start the thread
+        self.thread_mouse_pos_listener.start()
 
     def setupUi(self):
         general_layout = QVBoxLayout()
@@ -54,48 +66,22 @@ class NotifyScreen(QWidget):
         rate = self.screen_sizeX / 1280
         x_rate = float(x) * rate
         y_rate = float(y) * rate
-        # Step 2: Create a QThread object
-        self.thread1 = QThread()
-        # Step 3: Create a worker object
-        self.move_mouse_worker = MoveMouseCursor(x_rate, y_rate)
-        # Step 4: Move worker to the thread
-        self.move_mouse_worker.moveToThread(self.thread1)
-        # Step 5: Connect signals and slots
-        self.thread1.started.connect(self.move_mouse_worker.run)
-        self.move_mouse_worker.finished.connect(self.thread1.quit)
-        self.move_mouse_worker.finished.connect(self.move_mouse_worker.deleteLater)
-        self.thread1.finished.connect(self.thread1.deleteLater)
-        self.thread1.start()
+        # 2. Instantiate the subclass of QRunnable
+        runnable1 = MoveMouseCursorRunnable(x_rate, y_rate)
+        # 3. Call start()
+        QThreadPool.globalInstance().start(runnable1)
 
     def mouseLeftClick(self):
-        # Step 2: Create a QThread object
-        self.thread2 = QThread()
-        # Step 3: Create a worker object
-        self.mouse_left_worker = MouseLeftClick()
-        # Step 4: Move worker to the thread
-        self.mouse_left_worker.moveToThread(self.thread2)
-        # Step 5: Connect signals and slots
-        self.thread2.started.connect(self.mouse_left_worker.run)
-        self.mouse_left_worker.finished.connect(self.thread2.quit)
-        self.mouse_left_worker.finished.connect(self.mouse_left_worker.deleteLater)
-        self.thread2.finished.connect(self.thread2.deleteLater)
-        # Step 6: Start the thread
-        self.thread2.start()
+        # 2. Instantiate the subclass of QRunnable
+        runnable2 = MouseLeftClickRunnable()
+        # 3. Call start()
+        QThreadPool.globalInstance().start(runnable2)
 
     def mouseRightClick(self):
-        # Step 2: Create a QThread object
-        self.thread3 = QThread()
-        # Step 3: Create a worker object
-        self.mouse_right_worker = MouseLeftClick()
-        # Step 4: Move worker to the thread
-        self.mouse_right_worker.moveToThread(self.thread3)
-        # Step 5: Connect signals and slots
-        self.thread3.started.connect(self.mouse_right_worker.run)
-        self.mouse_right_worker.finished.connect(self.thread3.quit)
-        self.mouse_right_worker.finished.connect(self.mouse_right_worker.deleteLater)
-        self.thread3.finished.connect(self.thread3.deleteLater)
-        # Step 6: Start the thread
-        self.thread3.start()
+        # 2. Instantiate the subclass of QRunnable
+        runnable3 = MouseRightClickRunnable()
+        # 3. Call start()
+        QThreadPool.globalInstance().start(runnable3)
 
     def closeNotify(self):
         self.frame_sender_worker.flag = False
