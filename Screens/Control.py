@@ -21,6 +21,7 @@ class HostScreen(QLabel):
     right_clicked = pyqtSignal()
 
     def mouseReleaseEvent(self, QMouseEvent):
+        # Mouse tiklamalarina gore Redis iletisimi icin tanimlanmis fonksiyonlar tetiklenir
         if QMouseEvent.button() == Qt.LeftButton:
             self.clicked.emit()
         if QMouseEvent.button() == Qt.RightButton:
@@ -32,17 +33,20 @@ class PcControlScreen(QWidget):
 
     def __init__(self, id, i_am_controlling):
         super().__init__()
+        # Control eden PC ekrani olusurken kimi kontrol ettigi ve kendi idsinin ne oldugu belirtilir
         self.id = id
         self.i_am_controlling = i_am_controlling
         self.pool = QThreadPool()
+        # Kullanilmayan processlerin zaman asimina ugrar ve silinir
         self.pool.setExpiryTimeout(100)
         self.pool.setMaxThreadCount(4)
         self.setupUi()
+        # Kontrol islemi baslatilir.Frame,Mouse bilgileri alinir veya gonderilir
         self.startFrameReveiver()
 
     def setupUi(self):
         self.setObjectName("PC Control")
-        # self.setMaximumSize(1280, 720)
+
         self.image_frame_label = HostScreen()
         self.image_frame_label.setMaximumSize(1280, 720)
         self.image_frame_label.setMouseTracking(True)
@@ -53,11 +57,12 @@ class PcControlScreen(QWidget):
         self.end_connection_btn.clicked.connect(self.exit_from_here)
 
         tracker = MouseTracker(self.image_frame_label)
+        # Mouse Frame'in ustunde hareket ettikce fonksiyon tetiklenir
         tracker.positionChanged.connect(self.on_positionChanged)
         self.grid = QGridLayout()
         self.grid.addWidget(self.image_frame_label)
         self.grid.addWidget(self.end_connection_btn)
-        # self.grid.addWidget(self.close_btn)
+
         self.setLayout(self.grid)
 
     def exit_from_here(self):
@@ -65,6 +70,8 @@ class PcControlScreen(QWidget):
 
     def mouse_clicked(self):
         logging.info("SOL TIK ALINDI!")
+        # Sol tik islemi havuzdaki yerini alir ve sirasi geldiginde calisir.
+        # bu islem bilgisayarin veya GUI nin kasmasini engeller
         runnable1 = SendMouseLeftClickRunnable(self.id, self.i_am_controlling)
         # 3. Call start()
         self.pool.start(runnable1)
@@ -77,12 +84,9 @@ class PcControlScreen(QWidget):
 
     @pyqtSlot(QPoint)
     def on_positionChanged(self, pos):
-        # time.sleep(0.005)
-        # logging.info(f"Mouse konumu => X:{pos.x()} Y:{pos.y()}")
         runnable3 = SendPointerPositionRunnable(
             self.id, self.i_am_controlling, pos.x(), pos.y()
         )
-        # 3. Call start()
         self.pool.start(runnable3)
 
     @pyqtSlot(QImage)
@@ -90,23 +94,10 @@ class PcControlScreen(QWidget):
         self.image_frame_label.setPixmap(QPixmap.fromImage(image))
 
     def startFrameReveiver(self):
-        # Step 2: Create a QThread object
         self.frame_receiver_thread = QThread()
-        # Step 3: Create a worker object
         self.frame_receiver_worker = FrameReceiverWorker(self.id, self.i_am_controlling)
-        # Step 4: Move worker to the thread
         self.frame_receiver_worker.moveToThread(self.frame_receiver_thread)
-        # Step 5: Connect signals and slots
         self.frame_receiver_thread.started.connect(self.frame_receiver_worker.run)
-        # self.frame_receiver_worker.finished.connect(self.frame_receiver_thread.quit)
-        # self.frame_receiver_worker.finished.connect(
-        #     self.frame_receiver_worker.deleteLater
-        # )
-        # self.frame_receiver_thread.finished.connect(
-        #     self.frame_receiver_thread.deleteLater
-        # )
-        self.frame_receiver_worker.changePixmap.connect(self.setImage)
-        # Step 6: Start the thread
         self.frame_receiver_thread.start()
 
 
@@ -116,6 +107,7 @@ class MouseTracker(QObject):
     def __init__(self, widget):
         super().__init__(widget)
         self._widget = widget
+        # Mouse takibi aktiflestirimek
         self.widget.setMouseTracking(True)
         self.widget.installEventFilter(self)
 

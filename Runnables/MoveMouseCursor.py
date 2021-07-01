@@ -15,7 +15,7 @@ class MoveMouseCursorRunnable(QRunnable):
 
     def run(self):
         logging.info(f"Mouse Position Received! (X:{self.x},Y:{self.y})")
-        # Your long-running task goes here ...
+        # Mouse Gelen Konuma hareket ettirilir
         pyautogui.FAILSAFE = False
         pyautogui.moveTo(
             self.x,

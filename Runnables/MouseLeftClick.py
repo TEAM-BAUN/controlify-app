@@ -11,7 +11,7 @@ class MouseLeftClickRunnable(QRunnable):
         self.setAutoDelete(True)
 
     def run(self):
-        # Your long-running task goes here ...
+        # Mouse Sag tik'in gerceklesmesi
         logging.info("Left Click received!")
         pyautogui.leftClick()
         self.autoDelete()

@@ -19,7 +19,6 @@ class SendMouseRightClickRunnable(QRunnable):
         self.setAutoDelete(True)
 
     def run(self):
-        # Your long-running task goes here ...
         logging.info("Mouse Right Click Send!")
         r.publish(
             "logs",

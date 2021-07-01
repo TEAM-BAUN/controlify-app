@@ -86,11 +86,6 @@ class LogListenerWorker(QObject):
                     if log_dict["to"] == self.id:
                         self.close_notify_screen.emit()
 
-                # if log_dict["log_type"] == "mouse_position":
-                #     if log_dict["to"] == self.id:
-                #         mouse_position = log_dict["mouse_position"]
-                #         x_y = mouse_position.split(":")
-                #         self.mouse_pointer_pos.emit(x_y[0], x_y[1])
                 if log_dict["log_type"] == "mouse_left_click":
                     if log_dict["to"] == self.id:
                         self.mouse_left_click.emit()

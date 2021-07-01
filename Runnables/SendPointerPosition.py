@@ -22,21 +22,10 @@ class SendPointerPositionRunnable(QRunnable):
         self.setAutoDelete(True)
 
     def run(self):
-        # Your long-running task goes here ...
-        logging.info(f"Mouse Position is sending! (X:{self.x},Y:{self.y})")
+        # Mouse Konumunun redis kanalina gonderilmesi
+        # "?to=123123123&from=45564564564&posX=123&posY=456" seklinde gonderilir
         r.publish(
             "mouse_positions",
             f"?to={self.theIdIamControlling}&from={self.id}&posX={self.x}&posY={self.y}",
         )
-        # r.publish(
-        #     "logs",
-        #     pickle.dumps(
-        #         {
-        #             "to": f"{self.theIdIamControlling}",
-        #             "from": f"{self.id}",
-        #             "log_type": "mouse_position",
-        #             "mouse_position": f"{self.x}:{self.y}",
-        #         }
-        #     ),
-        # )
         self.autoDelete()

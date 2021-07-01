@@ -22,10 +22,13 @@ class FileSenderThread(QThread):
         self.file_path = path
         self.id = id
         self.who_is = who_is
+        # Dosya boyutunu almak
         self.file_size = os.path.getsize(self.file_path)
+        # Redis maximum 65535 byte kabul ettigi icin buyuk verileri parcaliyoruz
         self.packet_count = math.ceil(self.file_size / 65535)
         a, b = os.path.split(self.file_path)
         self.file_extension = os.path.splitext(b)[1]
+        # Paket sayisini progress barda gorsel olarak gosteriyoruz
         self.progress_step_amount = 100 / self.packet_count
 
     def run(self):

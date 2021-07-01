@@ -33,7 +33,9 @@ class FileTransferScreen(QWidget):
         self.setLayout(self.generalLayout)
 
     def startFileListenerWork(self):
-        self.file_listener_thread = FileListenerThread(self.id , self.who_is)
+        # GUI yi dondurmamak icin Arka planda GUInin akisindan bagimsiz dosya gonderme Islemi aciyoruz
+        # Parametre olarak kendi idsini ve kime gonderilecegini veriyoruz
+        self.file_listener_thread = FileListenerThread(self.id, self.who_is)
         self.file_listener_thread.start()
 
     def dragEnterEvent(self, event):
@@ -43,6 +45,8 @@ class FileTransferScreen(QWidget):
             event.ignore()
 
     def dropEvent(self, event):
+        # Suruklenen dosyanin gerekli bilgilerini aliyoruz
+        # Dosya Konumu,boyutu vs..
         file = [u.toLocalFile() for u in event.mimeData().urls()][0]
         self.file_sender_thread = FileSenderThread(file, self.id, self.who_is)
         self.file_sender_thread.finished.connect(lambda: self.setAcceptDrops(True))
@@ -52,6 +56,7 @@ class FileTransferScreen(QWidget):
         self.file_sender_thread.progress_level.connect(self.progress)
 
     def progress(self, value):
+      # Progress bar i gelen dosya boyutuna gore yuzdelik olarak degistiriyoruz
         self.pbar.setValue(int(value))
         print(int(value))
         if value == 100:

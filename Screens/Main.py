@@ -63,6 +63,7 @@ class Main(QMainWindow):
         self.isRequestCanceled = None
 
     def requestCanceled(self, id_who_reject):
+        # Eger kullanici reddedilirse canli kanala ret bilgisi gonderiyoruz
         r.publish(
             "logs",
             pickle.dumps(
@@ -203,7 +204,6 @@ class Main(QMainWindow):
             self.file_transfer_screen = FileTransferScreen(self.id, connected_id)
             self.file_transfer_screen.show()
             self.hide()
-            
 
     def closeControlScreen(self, who_closed):
         self.control.frame_receiver_worker.flag = False
@@ -320,21 +320,15 @@ class Main(QMainWindow):
     def refreshIdList(self, ids):
         if len(ids) > 0:
             decoded_ids = [x.decode("utf-8") for x in ids]
-            # Kendi idsini siliyoruz
-            # print(decoded_ids)
-            # Client'in kendi ipsini siliyoruz ;)
             for id in decoded_ids:
                 if id == self.id:
                     decoded_ids.remove(id)
-            # print(decoded_ids)
             # Listemizi guncel listeyle degistirmek icin siliyoruz
             self.connected_ids_listwidget.clear()
             # Yeni idleri listeye ekliyoruz
             if len(decoded_ids) > 0:
                 for id in decoded_ids:
                     self.connected_ids_listwidget.addItem(id)
-        # elif len(ids) == 0:
-        #     self.connected_ids_listwidget.clear()
 
     def radiosBtnState(self, b):
         if b.text() == "Bilgisayar Yönetimi":
@@ -382,7 +376,6 @@ class Main(QMainWindow):
                 r.get(f"status:{self.to_be_connLineEdit.text()}").decode("utf-8")
                 == "busy"
             ):
-                # logging.info(f"{self.to_be_connLineEdit.text()} aktif ama mesgul!")
                 r.set(f"status:{self.id}", "available", ex=3600)
                 reply = QMessageBox.information(self, "Uyari!", "Kullanici mesgul!")
             else:
@@ -408,5 +401,4 @@ class Main(QMainWindow):
         else:
             r.set(f"status:{self.id}", "available", ex=3600)
             QMessageBox.information(self, "Uyari!", "Kullanici Cevrimdisi!")
-            # logging.info(f"{self.to_be_connLineEdit.text()} cevrimdisi!")
         # step:3 => Eger aktif bilgisayarlar arasindaysa log kanalina baglanti istegini ilet

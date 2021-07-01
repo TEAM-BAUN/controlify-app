@@ -12,7 +12,7 @@ class MouseRightClickRunnable(QRunnable):
         self.setAutoDelete(True)
 
     def run(self):
-        # Your long-running task goes here ...
+        # Mouse Sag tik'in gerceklesmesi
         logging.info(f"Right Click received!")
         pyautogui.rightClick()
         self.autoDelete()

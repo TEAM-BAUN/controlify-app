@@ -24,7 +24,6 @@ class MousePosListenerWorker(QObject):
     def run(self):
         self.flag = True
         p.subscribe("mouse_positions")
-        logging.info("Mouse konumlari dinleniyor...")
 
         while self.flag:
             log = p.get_message()
@@ -32,6 +31,7 @@ class MousePosListenerWorker(QObject):
                 mouse_log_details = log["data"].decode("utf-8")
                 regex = re.compile(pattern)
                 m = regex.match(mouse_log_details)
+                # Text icinde gelen veriyi regular expression yardimiyla ayiriyoruz
                 id = m.group(1)
                 # senderID = m.group(2) Luzumu yok!
                 posX = m.group(3)

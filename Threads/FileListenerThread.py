@@ -29,6 +29,7 @@ class FileListenerThread(QThread):
         while True:
             file = p.get_message()
             if file:
+              # Gelen binary datasini tekrar dictionary'e donusturur
                 file_dict = pickle.loads(file["data"])
                 if file_dict["to"] == self.id:
                     self.sayac += 1

@@ -33,8 +33,14 @@ class FrameSenderWorker(QObject):
         global encode_param
         with mss.mss() as sct:
             while self.flag:
+                # Ekran goruntusunu alarak numpy arrayine donusturuyoruz
                 img = numpy.array(sct.grab(sct.monitors[1]))
-                result, frame = cv2.imencode(".jpg", img, encode_param)
+                # Goruntu sikistirmalarini gerceklestiriyoruz
+                result, frame = cv2.imencode(
+                    ".jpg", img, encode_param
+                )  # Redis in anlayacagi bir yapi olan binary data ya ceviriyoruz
                 binary_frame = pickle.dumps(frame)
+                # Daha hizli islem yapabilmek icin sikistiriyoruz
                 zipped_binary_frame = zlib.compress(binary_frame)
+                # Redis memory database'ine sikistirilmis veriyi yaziyoruz
                 r.set(f"frame:{self.id}", zipped_binary_frame)
