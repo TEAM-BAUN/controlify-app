@@ -15,6 +15,9 @@ status, r, p = redisServerSetup()
 
 
 class FrameReceiverWorker(QObject):
+    # PyQt kendi icinde event tetikleme mekanizmasina sahiptir.
+    # Tetiklemek istedigininiz event i ve iletecegi verinin tipini belirtiginizde
+    # uzun suren bir QObject isleminden uretilen verileri arayuz'e aktarmayi saglar.
     changePixmap = pyqtSignal(QImage)
     close_pc_control_screen = pyqtSignal()
     finished = pyqtSignal()

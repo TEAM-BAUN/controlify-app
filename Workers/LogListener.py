@@ -16,6 +16,9 @@ pattern = "^\?to=(\d+)&from=(\d+)&posX=(\d+)&posY=(\d+)"
 
 # Step 1: Create a worker class
 class LogListenerWorker(QObject):
+    # PyQt kendi icinde event tetikleme mekanizmasina sahiptir.
+    # Tetiklemek istedigininiz event i ve iletecegi verinin tipini belirtiginizde
+    # uzun suren bir QObject isleminden uretilen verileri arayuz'e aktarmayi saglar.
     finished = pyqtSignal()
     update_id_list = pyqtSignal(list)
     open_new_window = pyqtSignal(str, str)
@@ -27,6 +30,7 @@ class LogListenerWorker(QObject):
 
     mouse_right_click = pyqtSignal()
     mouse_left_click = pyqtSignal()
+    # x ve y konumlarini uretip arayuze aktaracagimiz icin2 tane str tipinde parametre alir dedik
     mouse_pointer_pos = pyqtSignal(str, str)
 
     def __init__(self, id):
@@ -42,6 +46,7 @@ class LogListenerWorker(QObject):
         # Thread surekli guncel listeyi tutuyor elinde fakat
         # sadece biri server'a katildiginda veya ayrildiginda listwidget guncellenecektir
         while self.flag:
+            # Surekli yeni listeyi alarak sistemde kimlerin aktif oldugunu belirtir
             updated_list = r.lrange("id_list", 0, -1)
             log = p.get_message()
             if log:

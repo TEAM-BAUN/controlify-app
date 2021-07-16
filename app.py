@@ -10,6 +10,7 @@ __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 if __name__ == "__main__":
+    # Redis baglantasindan donen status degerine gore uygulamayi baslatiyoruz!
     status, r, p = redisServerSetup()
 
     if status:
@@ -18,6 +19,7 @@ if __name__ == "__main__":
         screen_resolution = app.desktop().screenGeometry()
         width, height = screen_resolution.width(), screen_resolution.height()
         main_window = Main(width, height)
+        # Ana pencereyi göstermek!
         main_window.show()
         sys.exit(app.exec())
     else:

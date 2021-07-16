@@ -13,6 +13,7 @@ status, r, p = redisServerSetup()
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
+# CV2 Goruntu kalitesinin yapisi
 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 25]
 
 

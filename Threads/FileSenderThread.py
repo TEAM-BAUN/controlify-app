@@ -39,6 +39,8 @@ class FileSenderThread(QThread):
         current_packet = 0
         while data:
             current_packet += 1
+            # Dosya paketinin kayip olmamasi icin belirli parametrelerle birlikte gonderiyor
+            # kacinci paket gidiyor,Dosyanin tam boyutu nedir,Dosya uzantasi gibi...
             r.publish(
                 "file",
                 pickle.dumps(
@@ -53,9 +55,12 @@ class FileSenderThread(QThread):
                     }
                 ),
             )
+            # islemin ilerleyisini takip ediyoruz.
+            # Arayuzde dinamik bir sekilde degistiriyoruz
             self.progress_level.emit(
                 math.ceil(current_packet * self.progress_step_amount)
             )
             data = f.read(65535)
         logging.info("Dosya gonderme islemi tamamlandi!")
+        # Dosya gonderme isleminin bittigine dair GUIyi haberdar ediyoruz
         self.finished.emit()

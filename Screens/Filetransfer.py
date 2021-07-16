@@ -56,7 +56,7 @@ class FileTransferScreen(QWidget):
         self.file_sender_thread.progress_level.connect(self.progress)
 
     def progress(self, value):
-      # Progress bar i gelen dosya boyutuna gore yuzdelik olarak degistiriyoruz
+        # Progress bar i gelen dosya boyutuna gore yuzdelik olarak degistiriyoruz
         self.pbar.setValue(int(value))
         print(int(value))
         if value == 100:
