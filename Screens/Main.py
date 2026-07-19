@@ -1,79 +1,62 @@
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-
-# Ekranlar
-from Screens.Control import PcControlScreen
-from Screens.Notify import NotifyScreen
-from Screens.Loading import LoadingScreen
-from Screens.Filetransfer import FileTransferScreen
-
-
-from datetime import datetime
 import logging
-import pickle
 import time
 
+from PySide6.QtCore import QPoint, QRect, QSize
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-logging.basicConfig(format="%(message)s", level=logging.INFO)
-
-from Workers.LogListener import LogListenerWorker
-
-from Utils.redisconn import redisServerSetup
-
-status, r, p = redisServerSetup()
+from Screens.Control import PcControlScreen
+from Screens.Filetransfer import FileTransferScreen
+from Screens.Loading import LoadingScreen
+from Screens.Notify import NotifyScreen
+from Utils.network import Discovery, Peer
 
 
 class Main(QMainWindow):
     def __init__(self, width, height):
         super().__init__()
-        # ? Desktop Screen Size
-        # * ------------
         self.desktop_screenX = width
-        self.desktop_screenY = height
-        # * ------------
-        # ? Unique ID creation for every client
-        # * ------------
-        now = datetime.now()
-        id = str.join("", str(datetime.timestamp(now)).split("."))
-        self.id = id
+        # ? Her istemci icin benzersiz (numerik) ID uretimi
+        self.id = str(time.time_ns())
         # Varsayilan Baglanti Tipi
         self.connectionType = "Bilgisayar Yönetimi"
-        # * ------------
+
+        # Ag katmani: TCP dinleyici + LAN kesfi
+        self.peer = Peer(self.id)
+        self.discovery = Discovery(self.id, self.peer.port)
+        self.peers = {}
+
+        # Oturum durumu
+        self.awaiting_answer = False
+        self.session_screen = None
+
         self.setupUi()
         self.connBtn.setDisabled(True)
-        self.startLogListenerWorker()
-        r.lpush("id_list", self.id)
-        r.publish(
-            "logs",
-            pickle.dumps(
-                {
-                    "id": f"{self.id}",
-                    "log_type": "client_activated",
-                }
-            ),
-        )
-        r.set(f"status:{self.id}", "available", ex=3600)
+
+        self.discovery.peers_changed.connect(self.refreshPeerList)
+        self.peer.request_received.connect(self.manageNewConnection)
+        self.peer.answer_received.connect(self.manageAnswer)
+        self.peer.disconnected.connect(self.managePeerDisconnected)
+
         self.loading_screen = LoadingScreen()
-        self.loading_screen.show_main.connect(self.show)
-        self.loading_screen.now_available.connect(
-            lambda: r.set(f"status:{self.id}", "available", ex=3600)
-        )
-        self.loading_screen.request_cancaled.connect(self.requestCanceled)
-        self.isRequestCanceled = None
+        self.loading_screen.canceled.connect(self.requestCanceled)
 
     def requestCanceled(self, id_who_reject):
-        # Eger kullanici reddedilirse canli kanala ret bilgisi gonderiyoruz
-        r.publish(
-            "logs",
-            pickle.dumps(
-                {
-                    "log_type": "connection_request_canceled",
-                    "from": f"{self.id}",
-                    "to": f"{id_who_reject}",
-                }
-            ),
-        )
+        # Kullanici beklemekten vazgecti; baglantiyi kapatmak karsi tarafa yeter
+        self.awaiting_answer = False
+        self.peer.close_connection()
+        self.discovery.set_status("available")
+        self.show()
 
     # UserInterface
     def setupUi(self):
@@ -96,21 +79,13 @@ class Main(QMainWindow):
             self,
             "Message",
             "Are you sure to quit?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.Yes:
-            # Kapanirken IPyi siler
-            r.lrem("id_list", 1, self.id)
-            r.publish(
-                "logs",
-                pickle.dumps(
-                    {
-                        "id": f"{self.id}",
-                        "log_type": "client_deactivated",
-                    }
-                ),
-            )
+        if reply == QMessageBox.StandardButton.Yes:
+            # Kapanirken duyurular durur; digerleri bizi zaman asimiyla listeden dusurur
+            self.discovery.stop()
+            self.peer.shutdown()
             event.accept()
         else:
             event.ignore()
@@ -126,8 +101,8 @@ class Main(QMainWindow):
 
     def _createIpList(self):
         """
-        [Bağlı Bilgisayarların ID'lerini gösteren widget]
-        [Sürekli Güncel]
+        [Agdaki aktif istemcilerin ID'lerini gosteren widget]
+        [UDP duyurularindan surekli guncel]
         """
         self.connected_ids_listwidget = QListWidget()
         self.connected_ids_listwidget.itemDoubleClicked.connect(self.setTheID)
@@ -163,7 +138,7 @@ class Main(QMainWindow):
 
     def _createConnectButton(self):
         self.connBtn = QPushButton("Bağlan")
-        self.connBtn.clicked.connect(self.connect)
+        self.connBtn.clicked.connect(self.connectToPeer)
         self.generalLayout.addWidget(self.connBtn)
 
     def _createExitButton(self):
@@ -172,181 +147,103 @@ class Main(QMainWindow):
         self.generalLayout.addWidget(self.exitBtn)
 
     # Methods
-    def startLogListenerWorker(self):
-        # Step 2: Create a QThread object
-        self.log_listener_thread = QThread()
-        self.log_listener_thread.isRunning()
-        # Step 3: Create a worker object
-        self.logListenerWorker = LogListenerWorker(self.id)
-        self.logListenerWorker.moveToThread(self.log_listener_thread)
-        self.logListenerWorker.update_id_list.connect(self.refreshIdList)
-        self.logListenerWorker.finished.connect(self.log_listener_thread.quit)
-        self.logListenerWorker.finished.connect(self.logListenerWorker.deleteLater)
-        self.log_listener_thread.finished.connect(self.log_listener_thread.deleteLater)
-        self.log_listener_thread.started.connect(self.logListenerWorker.run)
-        self.logListenerWorker.open_new_window.connect(self.manageNewConnection)
-        self.logListenerWorker.request_rejected.connect(self.manageRejectedRequest)
-        self.logListenerWorker.request_accepted.connect(self.manageAcceptedRequest)
-        # Step 4: Move worker to the thread
-        self.log_listener_thread.start()
+    def refreshPeerList(self, peers):
+        self.peers = peers
+        self.connected_ids_listwidget.clear()
+        for peer_id in peers:
+            self.connected_ids_listwidget.addItem(peer_id)
+
+    def manageAnswer(self, accepted, connection_type, connected_id, reason):
+        if not self.awaiting_answer:
+            return
+        self.awaiting_answer = False
+        self.loading_screen.close()
+        if accepted:
+            self.manageAcceptedRequest(connection_type, connected_id)
+        else:
+            self.peer.close_connection()
+            self.discovery.set_status("available")
+            self.show()
+            if reason == "busy":
+                QMessageBox.information(self, "Uyari!", "Kullanici mesgul!")
+            else:
+                QMessageBox.information(self, "Uyari!", "Kullanici sizi reddetti!")
 
     def manageAcceptedRequest(self, connection_type, connected_id):
-        self.loading_screen.close()
         if connection_type == "Bilgisayar Yönetimi":
-            self.control = PcControlScreen(self.id, connected_id)
-            self.control.close_control_screen.connect(self.closeControlScreen)
-            self.control.show()
+            screen = PcControlScreen(self.peer)
         else:
-            self.logListenerWorker.flag = False
-            self.log_listener_thread.quit()
-            self.logListenerWorker.deleteLater()
-            self.log_listener_thread.deleteLater()
-            self.file_transfer_screen = FileTransferScreen(self.id, connected_id)
-            self.file_transfer_screen.show()
-            self.hide()
+            screen = FileTransferScreen(self.peer)
+        self.startSession(screen)
 
-    def closeControlScreen(self, who_closed):
-        self.control.frame_receiver_worker.flag = False
-        self.control.frame_receiver_thread.quit()
-        self.control.frame_receiver_worker.deleteLater()
-        self.control.frame_receiver_thread.deleteLater()
-        self.control.close()
-        self.show()
-        r.publish(
-            "logs",
-            pickle.dumps(
-                {
-                    "log_type": "control_screen_closed",
-                    "from": f"{self.id}",
-                    "to": f"{who_closed}",
-                }
-            ),
-        )
-        r.set(f"status:{self.id}", "available")
+    def startSession(self, screen):
+        self.session_screen = screen
+        screen.session_ended.connect(self.endSessionByUser)
+        self.hide()
+        screen.show()
 
-    def closeNotifyScreen(self):
-        self.notify_screen.thread_frame_sender.quit()
-        self.notify_screen.frame_sender_worker.deleteLater()
-        self.notify_screen.thread_frame_sender.deleteLater()
-        self.notify_screen.close()
-        r.set(f"status:{self.id}", "available")
-        self.show()
+    def endSessionByUser(self):
+        # Oturumu bu taraf kapatti; soketin kapanmasi karsi tarafi da haberdar eder
+        self.peer.close_connection()
+        self.teardownSession()
 
-    def manageRejectedRequest(self):
-        self.loading_screen.close()
+    def managePeerDisconnected(self):
+        if self.awaiting_answer:
+            # Cevap beklerken karsi taraf kapandi/koptu
+            self.awaiting_answer = False
+            self.loading_screen.close()
+            self.discovery.set_status("available")
+            self.show()
+            QMessageBox.information(self, "Uyari!", "Kullaniciya ulasilamiyor!")
+        elif self.session_screen is not None:
+            self.teardownSession()
+            QMessageBox.information(self, "Uyari!", "Baglanti sonlandirildi!")
+
+    def teardownSession(self):
+        screen, self.session_screen = self.session_screen, None
+        if screen is not None:
+            screen.stop()
+            screen.close()
+        self.discovery.set_status("available")
         self.show()
-        QMessageBox.information(self, "Uyari!", "Kullanici sizi reddetti!")
 
     def manageNewConnection(self, connection_type, who_wants_to_connect):
-        r.set(f"status:{self.id}", "busy")
+        self.discovery.set_status("busy")
         reply = QMessageBox.question(
             self,
             "Onay",
-            f"{who_wants_to_connect} size baglanmak istiyor onayliyormusunuz? Baglanma Sekli : {connection_type}",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            f"{who_wants_to_connect} size baglanmak istiyor onayliyormusunuz?"
+            f" Baglanma Sekli : {connection_type}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if self.isRequestCanceled is None:
-            if reply == QMessageBox.Yes:
-                r.publish(
-                    "logs",
-                    pickle.dumps(
-                        {
-                            "log_type": "connection_request_answer",
-                            "from": f"{self.id}",
-                            "to": f"{who_wants_to_connect}",
-                            "result": True,
-                            "connection_type": f"{connection_type}",
-                        }
-                    ),
-                )
-                time.sleep(0.002)
-                logging.info(connection_type)
-                # todo 1 Baglanti tipine ait olan ekran acilacaktir!
+        if reply == QMessageBox.StandardButton.Yes:
+            # Gonderim basarisizsa istek sahibi biz cevap veremeden vazgecmis demektir
+            if self.peer.send_answer(True, connection_type):
                 if connection_type == "Bilgisayar Yönetimi":
-                    # todo 2 Bilgisayar Yonetimi Ekranini acmak
-                    self.notify_screen = NotifyScreen(
-                        self.id, who_wants_to_connect, self.desktop_screenX
+                    screen = NotifyScreen(
+                        self.peer, who_wants_to_connect, self.desktop_screenX
                     )
-                    self.notify_screen.backtoMain.connect(self.notifyScreenClosed)
-                    self.logListenerWorker.close_notify_screen.connect(
-                        self.closeNotifyScreen
-                    )
-                    self.logListenerWorker.mouse_left_click.connect(
-                        self.notify_screen.mouseLeftClick
-                    )
-                    self.logListenerWorker.mouse_right_click.connect(
-                        self.notify_screen.mouseRightClick
-                    )
-                    # self.logListenerWorker.mouse_pointer_pos.connect(
-                    #     self.notify_screen.moveMousePointer
-                    # )
-                    self.hide()
-                    self.notify_screen.show()
                 else:
-                    # todo 2 Dosya Transferi ekranini Ekranini acmak
-                    self.file_transfer_screen = FileTransferScreen(
-                        self.id, who_wants_to_connect
-                    )
-                    self.hide()
-                    self.file_transfer_screen.show()
+                    screen = FileTransferScreen(self.peer)
+                self.startSession(screen)
             else:
-                r.publish(
-                    "logs",
-                    pickle.dumps(
-                        {
-                            "log_type": "connection_request_answer",
-                            "from": f"{self.id}",
-                            "to": f"{who_wants_to_connect}",
-                            "result": False,
-                        }
-                    ),
+                self.discovery.set_status("available")
+                QMessageBox.information(
+                    self, "Uyari!", "Kullanici baglanma isleminden vazgecti!"
                 )
-                time.sleep(0.001)
-                r.set(f"status:{self.id}", "available")
         else:
-            logging.info("Kullanici baglanma isleminden vazgecti!")
-            QMessageBox.information(
-                self, "Uyari!", "Kullanici baglanma isleminden vazgecti!"
-            )
-            r.set(f"status:{self.id}", "available")
-
-    def notifyScreenClosed(self):
-        self.notify_screen.close()
-        self.show()
-        r.set(f"status:{self.id}", "available")
-
-    def refreshIdList(self, ids):
-        if len(ids) > 0:
-            decoded_ids = [x.decode("utf-8") for x in ids]
-            for id in decoded_ids:
-                if id == self.id:
-                    decoded_ids.remove(id)
-            # Listemizi guncel listeyle degistirmek icin siliyoruz
-            self.connected_ids_listwidget.clear()
-            # Yeni idleri listeye ekliyoruz
-            if len(decoded_ids) > 0:
-                for id in decoded_ids:
-                    self.connected_ids_listwidget.addItem(id)
+            self.peer.send_answer(False, connection_type)
+            self.peer.close_connection()
+            self.discovery.set_status("available")
 
     def radiosBtnState(self, b):
-        if b.text() == "Bilgisayar Yönetimi":
-            if b.isChecked() == True:
-                self.connectionType = "Bilgisayar Yönetimi"
-                logging.info(f"Baglanti tipi:{self.connectionType}")
-            else:
-                pass
-
-        if b.text() == "Dosya Transferi":
-            if b.isChecked() == True:
-                self.connectionType = "Dosya Transferi"
-                logging.info(f"Baglanti tipi:{self.connectionType}")
-            else:
-                pass
+        if b.isChecked():
+            self.connectionType = b.text()
+            logging.info(f"Baglanti tipi:{self.connectionType}")
 
     def idLineEditChanged(self, text):
-        # logging.info(text)
         if str.isnumeric(text):
             self.connBtn.setDisabled(False)
         else:
@@ -355,50 +252,32 @@ class Main(QMainWindow):
     def setTheID(self, item):
         self.to_be_connLineEdit.setText(item.text())
 
-    def connect(self):
-        # step:0 => Bu client i mesgul durumuna getir!
-        # 1 gun sonra key silinecek
-        r.set(f"status:{self.id}", "busy", ex=3600)
-        # step:1 => En guncel listeyi cekmek
-        updated_list = r.lrange("id_list", 0, -1)
-        ids = [x.decode("utf-8") for x in updated_list]
-        # Client'in kendi idsini siliyoruz
-        for id in ids:
-            if id == self.id:
-                ids.remove(id)
-        # step:2 => Baglanilacak ID aktif bilgisayarlar arasinda olup olmadigini kontrol et!
-
-        # logging.info(f"{ids}")
-
-        exist = self.to_be_connLineEdit.text() in ids
-        if exist:
-            if (
-                r.get(f"status:{self.to_be_connLineEdit.text()}").decode("utf-8")
-                == "busy"
-            ):
-                r.set(f"status:{self.id}", "available", ex=3600)
-                reply = QMessageBox.information(self, "Uyari!", "Kullanici mesgul!")
-            else:
-                self.hide()
-                self.loading_screen.startAnimation(self.to_be_connLineEdit.text())
-                center_position = (
-                    self.frameGeometry().center()
-                    - QRect(QPoint(), self.loading_screen.sizeHint()).center()
-                )
-                self.loading_screen.move(center_position)
-                logging.info(f"{self.to_be_connLineEdit.text()} aktif ve musait!")
-                r.publish(
-                    "logs",
-                    pickle.dumps(
-                        {
-                            "connection_mode": f"{self.connectionType}",
-                            "log_type": "connection_request",
-                            "from": f"{self.id}",
-                            "to": f"{self.to_be_connLineEdit.text()}",
-                        }
-                    ),
-                )
-        else:
-            r.set(f"status:{self.id}", "available", ex=3600)
+    def connectToPeer(self):
+        target = self.to_be_connLineEdit.text()
+        info = self.peers.get(target)
+        # step:1 => Hedef aktif istemciler arasinda mi?
+        if info is None:
             QMessageBox.information(self, "Uyari!", "Kullanici Cevrimdisi!")
-        # step:3 => Eger aktif bilgisayarlar arasindaysa log kanalina baglanti istegini ilet
+            return
+        # step:2 => Hedef mesgul mu?
+        if info["status"] == "busy":
+            QMessageBox.information(self, "Uyari!", "Kullanici mesgul!")
+            return
+        # step:3 => Dogrudan TCP baglantisi kur ve istegi ilet
+        self.discovery.set_status("busy")
+        try:
+            self.peer.connect_to(info["ip"], info["port"])
+        except OSError:
+            self.discovery.set_status("available")
+            QMessageBox.information(self, "Uyari!", "Kullaniciya baglanilamadi!")
+            return
+        self.awaiting_answer = True
+        self.peer.send_request(self.connectionType)
+        self.hide()
+        self.loading_screen.startAnimation(target)
+        center_position = (
+            self.frameGeometry().center()
+            - QRect(QPoint(), self.loading_screen.sizeHint()).center()
+        )
+        self.loading_screen.move(center_position)
+        logging.info(f"{target} aktif ve musait!")

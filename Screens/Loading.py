@@ -1,26 +1,23 @@
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon, QMovie
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-import os
-import logging
+from Utils.paths import asset_path
 
 
 class LoadingScreen(QWidget):
-    show_main = pyqtSignal()
-    now_available = pyqtSignal()
-    request_cancaled = pyqtSignal(str)
+    # Iptal edilen bekleyisin hedef ID'sini tasir
+    canceled = Signal(str)
 
     def __init__(self):
         super().__init__()
-        # self.setFixedSize(QSize(200, 200))
-        os.path.dirname(__file__)
-
         self.setupUi()
 
     def setupUi(self):
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint)
-        self.movie = QMovie(f"{os.getcwd()}/assets/spinner.gif")
+        self.setWindowFlags(
+            Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.CustomizeWindowHint
+        )
+        self.movie = QMovie(asset_path("spinner.gif"))
 
         generalLayout = QVBoxLayout()
 
@@ -36,7 +33,7 @@ class LoadingScreen(QWidget):
         hlbox2.addStretch()
 
         self.cancel_button = QPushButton("İptal et")
-        self.cancel_button.setIcon(QIcon(f"{os.getcwd()}/assets/cancel.png"))
+        self.cancel_button.setIcon(QIcon(asset_path("cancel.png")))
         self.cancel_button.clicked.connect(self.stopAnimation)
         hlbox3.addStretch()
         hlbox3.addWidget(self.cancel_button)
@@ -54,14 +51,8 @@ class LoadingScreen(QWidget):
         self.movie.start()
 
     def stopAnimation(self):
-        # todo Logs kanalina Kullanicinin istekden vazgectigine dair mesaj yollayalim ki karsi taraf'a giden bildirim ekrani kaybolsun
-        # todo  yada isteginden vazgecti mesaji alsin
-        self.request_cancaled.emit(self.id)
-        # Tekrar musait konumuna al
-        self.now_available.emit()
-        # Ana ekrani goster
-        self.show_main.emit()
-        # Animasyonu durdur
+        # Karsi tarafa vazgectigimizi baglantiyi kapatarak bildiririz;
+        # durum sifirlama ve ana ekrana donus Main tarafinda yapilir
+        self.canceled.emit(self.id)
         self.movie.stop()
-        # Loading Screen i kapat
         self.close()
