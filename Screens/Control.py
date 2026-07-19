@@ -1,121 +1,80 @@
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-
-from Runnables.SendMouseLeftClick import SendMouseLeftClickRunnable
-from Runnables.SendMouseRightClick import SendMouseRightClickRunnable
-from Runnables.SendPointerPosition import SendPointerPositionRunnable
-
-from Utils.redisconn import redisServerSetup
+from PySide6.QtCore import QPoint, Qt, QThread, Signal, Slot
+from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QWidget
 
 from Workers.FrameReceiver import FrameReceiverWorker
 
-import logging
-import time
-
-status, r, p = redisServerSetup()
-
 
 class HostScreen(QLabel):
-    clicked = pyqtSignal()
-    right_clicked = pyqtSignal()
+    """Karsi ekranin goruntusunu gosterir, uzerindeki mouse olaylarini yayar."""
 
-    def mouseReleaseEvent(self, QMouseEvent):
-        # Mouse tiklamalarina gore Redis iletisimi icin tanimlanmis fonksiyonlar tetiklenir
-        if QMouseEvent.button() == Qt.LeftButton:
+    clicked = Signal()
+    right_clicked = Signal()
+    moved = Signal(QPoint)
+
+    def __init__(self):
+        super().__init__()
+        self.setMouseTracking(True)
+
+    def mouseMoveEvent(self, event):
+        self.moved.emit(event.position().toPoint())
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
-        if QMouseEvent.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             self.right_clicked.emit()
 
 
 class PcControlScreen(QWidget):
-    close_control_screen = pyqtSignal(str)
+    session_ended = Signal()
 
-    def __init__(self, id, i_am_controlling):
+    def __init__(self, peer):
         super().__init__()
-        # Control eden PC ekrani olusurken kimi kontrol ettigi ve kendi idsinin ne oldugu belirtilir
-        self.id = id
-        self.i_am_controlling = i_am_controlling
-        self.pool = QThreadPool()
-        # Kullanilmayan processlerin zaman asimina ugrar ve silinir
-        self.pool.setExpiryTimeout(100)
-        self.pool.setMaxThreadCount(4)
+        self.peer = peer
         self.setupUi()
-        # Kontrol islemi baslatilir.Frame,Mouse bilgileri alinir veya gonderilir
-        self.startFrameReveiver()
+        # Kontrol islemi baslatilir: frame'ler alinir, mouse olaylari gonderilir
+        self.startFrameReceiver()
 
     def setupUi(self):
-        self.setObjectName("PC Control")
-
         self.image_frame_label = HostScreen()
         self.image_frame_label.setMaximumSize(1280, 720)
-        self.image_frame_label.setMouseTracking(True)
-        self.image_frame_label.clicked.connect(self.mouse_clicked)
-        self.image_frame_label.right_clicked.connect(self.mouse_right_clicked)
+        # Mouse olaylari kucuk mesajlardir, dogrudan soketten gonderilir
+        self.image_frame_label.clicked.connect(lambda: self.peer.send_mouse_left())
+        self.image_frame_label.right_clicked.connect(
+            lambda: self.peer.send_mouse_right()
+        )
+        self.image_frame_label.moved.connect(self.on_positionChanged)
 
         self.end_connection_btn = QPushButton("Bağlantıyı Sonlandır")
-        self.end_connection_btn.clicked.connect(self.exit_from_here)
+        self.end_connection_btn.clicked.connect(lambda: self.session_ended.emit())
 
-        tracker = MouseTracker(self.image_frame_label)
-        # Mouse Frame'in ustunde hareket ettikce fonksiyon tetiklenir
-        tracker.positionChanged.connect(self.on_positionChanged)
-        self.grid = QGridLayout()
-        self.grid.addWidget(self.image_frame_label)
-        self.grid.addWidget(self.end_connection_btn)
+        grid = QGridLayout()
+        grid.addWidget(self.image_frame_label)
+        grid.addWidget(self.end_connection_btn)
+        self.setLayout(grid)
 
-        self.setLayout(self.grid)
-
-    def exit_from_here(self):
-        self.close_control_screen.emit(self.i_am_controlling)
-
-    def mouse_clicked(self):
-        logging.info("SOL TIK ALINDI!")
-        # Sol tik islemi havuzdaki yerini alir ve sirasi geldiginde calisir.
-        # bu islem bilgisayarin veya GUI nin kasmasini engeller
-        runnable1 = SendMouseLeftClickRunnable(self.id, self.i_am_controlling)
-        # 3. Call start()
-        self.pool.start(runnable1)
-
-    def mouse_right_clicked(self):
-        logging.info("SAG TIK ALINDI!")
-        runnable2 = SendMouseRightClickRunnable(self.id, self.i_am_controlling)
-        # 3. Call start()
-        self.pool.start(runnable2)
-
-    @pyqtSlot(QPoint)
+    @Slot(QPoint)
     def on_positionChanged(self, pos):
-        runnable3 = SendPointerPositionRunnable(
-            self.id, self.i_am_controlling, pos.x(), pos.y()
-        )
-        self.pool.start(runnable3)
+        self.peer.send_mouse_move(pos.x(), pos.y())
 
-    @pyqtSlot(QImage)
+    @Slot(QImage)
     def setImage(self, image):
         self.image_frame_label.setPixmap(QPixmap.fromImage(image))
 
-    def startFrameReveiver(self):
+    def startFrameReceiver(self):
+        # JPEG cozme islemi arayuzu dondurmamak icin ayri thread'de yapilir
         self.frame_receiver_thread = QThread()
-        self.frame_receiver_worker = FrameReceiverWorker(self.id, self.i_am_controlling)
+        self.frame_receiver_worker = FrameReceiverWorker()
         self.frame_receiver_worker.moveToThread(self.frame_receiver_thread)
-        self.frame_receiver_thread.started.connect(self.frame_receiver_worker.run)
+        self.peer.frame_received.connect(self.frame_receiver_worker.on_frame)
+        self.frame_receiver_worker.changePixmap.connect(self.setImage)
         self.frame_receiver_thread.start()
 
-
-class MouseTracker(QObject):
-    positionChanged = pyqtSignal(QPoint)
-
-    def __init__(self, widget):
-        super().__init__(widget)
-        self._widget = widget
-        # Mouse takibi aktiflestirimek
-        self.widget.setMouseTracking(True)
-        self.widget.installEventFilter(self)
-
-    @property
-    def widget(self):
-        return self._widget
-
-    def eventFilter(self, o, e):
-        if o is self.widget and e.type() == QEvent.MouseMove:
-            self.positionChanged.emit(e.pos())
-        return super().eventFilter(o, e)
+    def stop(self):
+        try:
+            self.peer.frame_received.disconnect(self.frame_receiver_worker.on_frame)
+        except (TypeError, RuntimeError):
+            pass  # zaten kopmus
+        self.frame_receiver_thread.quit()
+        self.frame_receiver_thread.wait(1000)

@@ -1,54 +1,59 @@
-from PyQt5.QtCore import QThread
-
-import pickle
 import logging
 import os
 from pathlib import Path
 
-from Utils.redisconn import redisServerSetup
+from PySide6.QtCore import QObject, Signal, Slot
 
-logging.basicConfig(format="%(message)s", level=logging.INFO)
-
-status, r, p = redisServerSetup()
-
-path_to_download_folder = str(os.path.join(Path.home(), "Downloads"))
+DOWNLOAD_DIR = str(Path.home() / "Downloads")
 
 
-class FileListenerThread(QThread):
-    """Long-running task."""
+class FileReceiverWorker(QObject):
+    """Peer'den gelen dosya parcalarini Downloads klasorune yazar."""
 
-    def __init__(self, id, who_is_sending):
+    file_saved = Signal(str)  # kaydedilen dosyanin adi
+
+    def __init__(self):
         super().__init__()
-        # Dosya dinleyenin benzersiz numarasi
-        self.id = id
-        # Dosyanin alindigi client in benzersiz numarasi
-        self.who_is = who_is_sending
+        self._file = None
+        self._remaining = 0
+        self._name = ""
 
-    def run(self):
-        logging.info("Dosya Dinleniyor...")
-        # Redis sunucusunun file kanalina abone olarak burdan gelecek binary verilerini dinlemeye hazirlanir
-        p.subscribe("file")
-        self.sayac = 0
-        while True:
-            file = p.get_message()
-            # Gelen Binary data var mi diye surekli kontrol eder
-            if file:
-                # Gelen binary datasini tekrar dictionary'e donusturur
-                file_dict = pickle.loads(file["data"])
-                if file_dict["to"] == self.id:
-                    # Eger Gelen binary data kendisine gonderilmisse bu paketi kendi hafizasina alir
-                    self.sayac += 1
-                    if file_dict["current_packet"] == 1:
+    @Slot(str, int)
+    def on_file_meta(self, name, size):
+        # Guvenlik: karsi taraftan gelen isimden yol bilesenleri temizlenir
+        safe_name = os.path.basename(name) or "indirilen-dosya"
+        target = self._unique_path(safe_name)
+        self._name = os.path.basename(target)
+        self._file = open(target, "wb")
+        self._remaining = size
+        logging.info("Dosya aliniyor: %s (%d byte)", self._name, size)
+        if size == 0:
+            self._finish()
 
-                        self.file_name = (
-                            f"indirilen-dosya-{self.sayac}{file_dict['extension']}"
-                        )
-                        # Python nun dosyaya yazmak icin kullandigi wb parametresiyle dosya olusturur.
-                        self.f = open(
-                            os.path.join(path_to_download_folder, self.file_name), "wb"
-                        )
-                        # Olusturulan dosyaya redisten gelen her yeni  paketi ekler
-                    self.f.write(file_dict["bytes"])
-                    if file_dict["current_packet"] == file_dict["packet_count"]:
-                        # Eger gelen son paket ise dosyaya yazma islemini bitirir ve dosyayi kullanima hazir hale getirir.
-                        self.f.close()
+    @Slot(bytes)
+    def on_file_chunk(self, data):
+        if self._file is None:
+            return  # meta gelmeden parca geldi, yok say
+        self._file.write(data)
+        self._remaining -= len(data)
+        if self._remaining <= 0:
+            self._finish()
+
+    def _finish(self):
+        if self._file is None:
+            return
+        self._file.close()
+        self._file = None
+        logging.info("Dosya kaydedildi: %s", self._name)
+        self.file_saved.emit(self._name)
+
+    @staticmethod
+    def _unique_path(name):
+        # Ayni isimde dosya varsa uzerine yazmak yerine sonuna sayi ekler
+        base, ext = os.path.splitext(name)
+        candidate = os.path.join(DOWNLOAD_DIR, name)
+        counter = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(DOWNLOAD_DIR, f"{base}-{counter}{ext}")
+            counter += 1
+        return candidate

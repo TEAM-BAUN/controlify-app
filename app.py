@@ -1,26 +1,22 @@
-from PyQt5.QtWidgets import QApplication
-import sys
 import logging
-from Utils.redisconn import redisServerSetup
+import sys
+
+from PySide6.QtWidgets import QApplication
+
 from Screens.Main import Main
 
-__version__ = "0.1"
+__version__ = "1.0"
 __authors__ = ["Ahmet Yusuf Başaran ", "Yusufcan Günay"]
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 if __name__ == "__main__":
-    # Redis baglantasindan donen status degerine gore uygulamayi baslatiyoruz!
-    status, r, p = redisServerSetup()
-
-    if status:
-        app = QApplication(sys.argv)
-        # Ekran Cozunurluk degerlerini almak!
-        screen_resolution = app.desktop().screenGeometry()
-        width, height = screen_resolution.width(), screen_resolution.height()
-        main_window = Main(width, height)
-        # Ana pencereyi göstermek!
-        main_window.show()
-        sys.exit(app.exec())
-    else:
-        logging.info("Server'a bağlanılamıyor...")
+    # Sunucu bagimliligi yok: uygulama dogrudan acilir,
+    # LAN'daki diger istemciler UDP duyurulariyla listeye duser
+    app = QApplication(sys.argv)
+    # Ekran Cozunurluk degerlerini almak!
+    geometry = app.primaryScreen().geometry()
+    main_window = Main(geometry.width(), geometry.height())
+    # Ana pencereyi göstermek!
+    main_window.show()
+    sys.exit(app.exec())
