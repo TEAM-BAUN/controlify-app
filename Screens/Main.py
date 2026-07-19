@@ -2,7 +2,7 @@ import logging
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -25,6 +25,7 @@ from Screens.Filetransfer import FileTransferScreen
 from Screens.Loading import LoadingScreen
 from Screens.Notify import NotifyScreen
 from Utils.network import Discovery, Peer
+from Utils.paths import asset_path
 
 
 class PeerRow(QWidget):
@@ -133,10 +134,18 @@ class Main(QMainWindow):
         bar.setContentsMargins(22, 18, 22, 14)
         bar.setSpacing(10)
 
-        logo = QLabel("C")
-        logo.setObjectName("logoBox")
+        # Logo mark'i: retina icin DPR carpani ile olceklenir
+        logo = QLabel()
         logo.setFixedSize(30, 30)
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dpr = self.devicePixelRatioF()
+        mark = QPixmap(asset_path("logo/mark-512.png")).scaled(
+            int(30 * dpr),
+            int(30 * dpr),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        mark.setDevicePixelRatio(dpr)
+        logo.setPixmap(mark)
 
         baslik_kutusu = QVBoxLayout()
         baslik_kutusu.setSpacing(1)
@@ -335,13 +344,6 @@ class Main(QMainWindow):
     def _applyStyles(self):
         # Ekrana ozel stiller; ortak buton varyantlari global QSS'te (theme.py)
         self.setStyleSheet(f"""
-            QLabel#logoBox {{
-                background-color: {theme.ACCENT};
-                color: #ffffff;
-                font-size: 15px;
-                font-weight: 700;
-                border-radius: 8px;
-            }}
             QLabel#appName {{
                 font-size: 15px;
                 font-weight: 600;
