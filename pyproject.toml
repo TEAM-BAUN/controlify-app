@@ -18,7 +18,7 @@ dev = [
 ]
 
 [tool.pyright]
-include = ["app.py", "Screens", "Threads", "Utils", "Workers", "tests"]
+include = ["app.py", "Screens", "Utils", "tests"]
 
 [tool.ruff.lint]
 # I = import siralamasi (isort)

@@ -34,7 +34,6 @@ ACCENT_TINT = "rgba(92, 142, 240, 36)"  # 0.14
 # Durum
 GREEN = "#3fb877"  # musait
 AMBER = "#d9a13c"  # mesgul
-GREEN_RING = "rgba(63, 184, 119, 38)"  # 0.15 — glow yerine dis halka
 
 # Tehlike
 DANGER = "#e05d5d"

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from Screens import theme
-from Workers.FrameReceiver import FrameReceiverWorker
+from Utils.workers import FrameReceiverWorker
 
 
 class HostScreen(QLabel):
@@ -118,7 +118,7 @@ class PcControlScreen(QWidget):
         self.end_connection_btn = QPushButton("Bağlantıyı Sonlandır")
         self.end_connection_btn.setProperty("variant", "danger")
         self.end_connection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.end_connection_btn.clicked.connect(lambda: self.session_ended.emit())
+        self.end_connection_btn.clicked.connect(self.session_ended)
 
         bar_layout.addWidget(status_dot)
         bar_layout.addWidget(connected_label)
@@ -139,10 +139,8 @@ class PcControlScreen(QWidget):
         self.image_frame_label = HostScreen()
         self.image_frame_label.setMaximumSize(1280, 720)
         # Mouse olaylari kucuk mesajlardir, dogrudan soketten gonderilir
-        self.image_frame_label.clicked.connect(lambda: self.peer.send_mouse_left())
-        self.image_frame_label.right_clicked.connect(
-            lambda: self.peer.send_mouse_right()
-        )
+        self.image_frame_label.clicked.connect(self.peer.send_mouse_left)
+        self.image_frame_label.right_clicked.connect(self.peer.send_mouse_right)
         self.image_frame_label.moved.connect(self.on_positionChanged)
 
         frame_area = QFrame()

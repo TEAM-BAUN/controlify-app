@@ -7,8 +7,7 @@ from Utils.paths import asset_path
 
 
 class LoadingScreen(QWidget):
-    # Iptal edilen bekleyisin hedef ID'sini tasir
-    canceled = Signal(str)
+    canceled = Signal()
 
     def __init__(self):
         super().__init__()
@@ -80,7 +79,6 @@ class LoadingScreen(QWidget):
         """)
 
     def startAnimation(self, ID):
-        self.id = ID
         self.target_id_label.setText(str(ID))
         self.show()
         self.movie.start()
@@ -88,7 +86,7 @@ class LoadingScreen(QWidget):
     def stopAnimation(self):
         # Karsi tarafa vazgectigimizi baglantiyi kapatarak bildiririz;
         # durum sifirlama ve ana ekrana donus Main tarafinda yapilir
-        self.canceled.emit(self.id)
+        self.canceled.emit()
         self.close()
 
     def closeEvent(self, event):

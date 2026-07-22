@@ -3,8 +3,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from Screens import theme
-from Workers.FrameReceiver import DISPLAY_WIDTH
-from Workers.FrameSender import FrameSenderWorker
+from Utils.workers import DISPLAY_WIDTH, FrameSenderWorker
 
 
 class NotifyScreen(QWidget):
@@ -88,7 +87,7 @@ class NotifyScreen(QWidget):
         exitBtn.setObjectName("bitirBtn")
         exitBtn.setProperty("variant", "danger")
         exitBtn.setCursor(Qt.CursorShape.PointingHandCursor)
-        exitBtn.clicked.connect(lambda: self.session_ended.emit())
+        exitBtn.clicked.connect(self.session_ended)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()

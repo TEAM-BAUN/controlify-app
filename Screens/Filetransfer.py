@@ -10,8 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from Screens import theme
-from Threads.FileListenerThread import FileReceiverWorker
-from Threads.FileSenderThread import FileSenderThread
+from Utils.workers import FileReceiverWorker, FileSenderThread
 
 
 class FileTransferScreen(QWidget):
@@ -223,7 +222,7 @@ class FileTransferScreen(QWidget):
     def dropEvent(self, event):
         # Suruklenen dosyanin yolunu alip arka planda gondermeye baslariz
         self._setDragOver(False)
-        file = [u.toLocalFile() for u in event.mimeData().urls()][0]
+        file = event.mimeData().urls()[0].toLocalFile()
         self.file_name_label.setText(os.path.basename(file))
         self.pbar.setValue(0)
         self._setStatus("Gönderiliyor · %0")

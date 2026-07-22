@@ -66,13 +66,11 @@ class PeerRow(QWidget):
 
 
 class Main(QMainWindow):
-    def __init__(self, width, height):
+    def __init__(self, width):
         super().__init__()
         self.desktop_screenX = width
         # ? Her istemci icin benzersiz (numerik) ID uretimi
         self.id = str(time.time_ns())
-        # Varsayilan Baglanti Tipi
-        self.connectionType = "Bilgisayar Yönetimi"
 
         # Ag katmani: TCP dinleyici + LAN kesfi
         self.peer = Peer(self.id)
@@ -94,7 +92,7 @@ class Main(QMainWindow):
         self.loading_screen = LoadingScreen()
         self.loading_screen.canceled.connect(self.requestCanceled)
 
-    def requestCanceled(self, id_who_reject):
+    def requestCanceled(self):
         # Kullanici beklemekten vazgecti; baglantiyi kapatmak karsi tarafa yeter
         self.awaiting_answer = False
         self.peer.close_connection()
@@ -278,7 +276,6 @@ class Main(QMainWindow):
             btn.setObjectName("segBtn")
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.toggled.connect(lambda _checked, b=btn: self.radiosBtnState(b))
             self.connTypeGroup.addButton(btn)
             pill_layout.addWidget(btn)
         self.pcControlTypeBtn.setChecked(True)
@@ -302,9 +299,7 @@ class Main(QMainWindow):
         ipucu.setObjectName("targetHint")
         self.to_be_connLineEdit = QLineEdit()
         self.to_be_connLineEdit.setObjectName("targetInput")
-        self.to_be_connLineEdit.textChanged.connect(
-            lambda: self.idLineEditChanged(self.to_be_connLineEdit.text())
-        )
+        self.to_be_connLineEdit.textChanged.connect(self.idLineEditChanged)
         # Focus'ta kutu cercevesini ACCENT yapmak icin
         self.to_be_connLineEdit.installEventFilter(self)
         kutu_layout.addWidget(ipucu)
@@ -586,16 +581,8 @@ class Main(QMainWindow):
             self.peer.close_connection()
             self.discovery.set_status("available")
 
-    def radiosBtnState(self, b):
-        if b.isChecked():
-            self.connectionType = b.text()
-            logging.info(f"Baglanti tipi:{self.connectionType}")
-
     def idLineEditChanged(self, text):
-        if str.isnumeric(text):
-            self.connBtn.setDisabled(False)
-        else:
-            self.connBtn.setDisabled(True)
+        self.connBtn.setEnabled(text.isnumeric())
 
     def setTheID(self, item):
         # ID, setItemWidget kullanildigi icin item data'sinda tutulur
@@ -621,7 +608,9 @@ class Main(QMainWindow):
             ConfirmDialog.warn(self, "Kullaniciya baglanilamadi!")
             return
         self.awaiting_answer = True
-        self.peer.send_request(self.connectionType)
+        # checkedButton Optional donse de segment her zaman secili; None imkansiz
+        checked = self.connTypeGroup.checkedButton() or self.pcControlTypeBtn
+        self.peer.send_request(checked.text())
         self.hide()
         self.loading_screen.startAnimation(target)
         center_position = (
