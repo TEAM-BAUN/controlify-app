@@ -1,6 +1,6 @@
 [project]
 name = "controlify"
-version = "1.2.0"
+version = "1.2.1"
 description = "Serverless P2P remote screen sharing and control application (PySide6/Qt6)"
 readme = "README.md"
 requires-python = ">=3.13"
